@@ -140,7 +140,7 @@ int main(int argc, char *argv[]) {
 
   GlobalDofVector loadVector = asmbl.BuildVector(
       volumeCellGroup, {dof1},
-      [&](const CellIpData &cipd) { return pde.LoadVector(cipd); });
+      [&](const CellIpData &cipd) { return pde.LoadVector(cipd, 0.); });
 
   // ***********************************
   //    Add boundary loads

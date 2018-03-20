@@ -17,8 +17,15 @@ template<int TDim>
 class PoissonTypeProblem
 {
 public:
-    PoissonTypeProblem(DofType dof)
+    PoissonTypeProblem(DofType dof, double d = 1.)
         : mDof(dof)
+    {
+        mC.setIdentity();
+        mC *= d;
+    }
+
+    PoissonTypeProblem(DofType dof, Eigen::Matrix<double,TDim,TDim> c)
+        : mDof(dof), mC(c)
     {
     }
 
@@ -34,15 +41,15 @@ public:
     {
         Eigen::MatrixXd B = cipd.B(mDof,Nabla::Gradient());
         DofMatrix<double> stiffnessLocal;
-        stiffnessLocal(mDof, mDof) = B.transpose() * B;
+        stiffnessLocal(mDof, mDof) = B.transpose() * mC * B;
         return stiffnessLocal;
     }
 
-    DofVector<double> LoadVector(const CellIpData& cipd)
+    DofVector<double> LoadVector(const CellIpData& cipd, double f)
     {
         Eigen::MatrixXd N = cipd.N(mDof);
         DofVector<double> loadLocal;
-        loadLocal[mDof] = N.transpose() * 0.;
+        loadLocal[mDof] = N.transpose() * f;
         return loadLocal;
     }
 
@@ -67,6 +74,7 @@ public:
 
 private:
     DofType mDof;
+    Eigen::Matrix<double,TDim,TDim> mC;
 };
 
 } /* Integrand */

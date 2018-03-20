@@ -99,7 +99,8 @@ int main(int argc, char *argv[]) {
       [&](const CellIpData &cipd) { return pde.StiffnessMatrix(cipd); });
 
   GlobalDofVector loadVector = asmbl.BuildVector(
-      {}, {dof1}, [&](const CellIpData &cipd) { return pde.LoadVector(cipd); });
+      {}, {dof1},
+      [&](const CellIpData &cipd) { return pde.LoadVector(cipd, 0.); });
 
   // Compute modified stiffness matrix
   auto kJJ = stiffnessMx.JJ(dof1, dof1);

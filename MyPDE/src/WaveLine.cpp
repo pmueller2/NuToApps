@@ -184,7 +184,7 @@ int main(int argc, char *argv[]) {
 
   auto loadVector = asmbl.BuildVector(
       cellGroup, {dof1},
-      [&](const CellIpData &cipd) { return pde.LoadVector(cipd); });
+      [&](const CellIpData &cipd) { return pde.LoadVector(cipd, 0.); });
 
   // Compute modified stiffness matrix
   auto kJJ = stiffnessMx.JJ(dof1, dof1);

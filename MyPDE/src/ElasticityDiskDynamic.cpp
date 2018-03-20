@@ -1,5 +1,3 @@
-#include "boost/ptr_container/ptr_vector.hpp"
-
 #include "nuto/mechanics/constitutive/MechanicsInterface.h"
 
 #include "nuto/mechanics/interpolation/InterpolationBrickLobatto.h"
@@ -17,9 +15,11 @@
 
 #include "nuto/mechanics/cell/Cell.h"
 #include "nuto/mechanics/cell/CellInterface.h"
-
 #include "nuto/mechanics/cell/SimpleAssembler.h"
+
 #include "nuto/mechanics/dofs/DofNumbering.h"
+
+#include "nuto/mechanics/tools/CellStorage.h"
 
 #include "nuto/mechanics/integrationtypes/IntegrationTypeTensorProduct.h"
 
@@ -134,26 +134,14 @@ int main(int argc, char *argv[]) {
       order + 1, eIntegrationMethod::LOBATTO);
 
   // volume cells
-  boost::ptr_vector<CellInterface> volumeCells;
-  int cellId = 0;
-  for (ElementCollection &element : domain) {
-    volumeCells.push_back(new Cell(element, integrationType3D, cellId++));
-  }
-  Group<CellInterface> volumeCellGroup;
-  for (CellInterface &c : volumeCells) {
-    volumeCellGroup.Add(c);
-  }
+  CellStorage volumeCells;
+  Group<CellInterface> volumeCellGroup =
+      volumeCells.AddCells(domain, integrationType3D);
 
-  // volume cells
-  boost::ptr_vector<CellInterface> neumannCells;
-  cellId = 0;
-  for (ElementCollection &element : neumannBoundary) {
-    neumannCells.push_back(new Cell(element, integrationType2D, cellId++));
-  }
-  Group<CellInterface> neumannCellGroup;
-  for (CellInterface &c : neumannCells) {
-    neumannCellGroup.Add(c);
-  }
+  // boundary cells
+  CellStorage neumannCells;
+  Group<CellInterface> neumannCellGroup =
+      neumannCells.AddCells(neumannBoundary, integrationType2D);
 
   // ***********************************
   //    Assemble stiffness matrix

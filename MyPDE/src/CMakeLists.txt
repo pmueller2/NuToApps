@@ -12,6 +12,7 @@ find_library(ARPACK_LIBRARY
 
 foreach(inputFile
         square0.01.msh
+        disk02.msh
         plateWithInternalCrackHexed.msh
         rectangle100x100.msh
         rectangleWithInternalCrack01.msh
@@ -26,6 +27,7 @@ endforeach()
 
 foreach(myFile
     Coordinates
+    PiezoelectricDisk
     LocalCoordinatesFromGlobal
     LaplaceRectangle
     LaplacePolarCoordinates
