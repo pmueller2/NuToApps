@@ -97,7 +97,7 @@ struct Curl2DScalar : Interface
     }
 };
 
-//!@brief Gradient operator with some spatial variables replaced with wavenumber
+//!@brief Gradient operator for multicomponent dof
 struct MultiComponentGradient : Interface
 {
     MultiComponentGradient(int n) : mN(n)

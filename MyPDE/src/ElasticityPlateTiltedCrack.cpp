@@ -72,14 +72,15 @@ int main(int argc, char *argv[]) {
   Eigen::Vector3d crackLoad(0., 0., 1.);
 
   double tau = 0.2e-6;
-  double stepSize = 0.002e-6;
-  int numSteps = 50000;
+  double stepSize = 0.001e-6;
+  int numSteps = 100000;
 
   // ***************************
   //      Import a mesh
   // ***************************
 
-  MeshGmsh gmsh("plateWithInternalCrackHexed.msh");
+  MeshGmsh gmsh("plateWithInternalCrackHexedOrder2.msh");
+  // MeshGmsh gmsh("plateWithInternalCrack0.5Hexed2ndOrder.msh");
   MeshFem &mesh = gmsh.GetMeshFEM();
   auto top = gmsh.GetPhysicalGroup("Top");
   auto bottom = gmsh.GetPhysicalGroup("Bottom");
@@ -118,9 +119,9 @@ int main(int argc, char *argv[]) {
   // ***********************************
 
   IntegrationTypeTensorProduct<2> integrationType2D(
-      order + 1, eIntegrationMethod::LOBATTO);
+      order + 2, eIntegrationMethod::LOBATTO);
   IntegrationTypeTensorProduct<3> integrationType3D(
-      order + 1, eIntegrationMethod::LOBATTO);
+      order + 2, eIntegrationMethod::LOBATTO);
 
   // volume cells
   CellStorage volumeCells;

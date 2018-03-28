@@ -13,7 +13,12 @@ find_library(ARPACK_LIBRARY
 foreach(inputFile
         square0.01.msh
         disk02.msh
+        cube5.msh
+        cube1.msh
+        diskRegular_middle.msh
         plateWithInternalCrackHexed.msh
+        plateWithInternalCrackHexedOrder2.msh
+        plateWithInternalCrack0.5Hexed2ndOrder.msh
         rectangle100x100.msh
         rectangleWithInternalCrack01.msh
         circle.msh
@@ -27,6 +32,7 @@ endforeach()
 
 foreach(myFile
     Coordinates
+    TestNormal
     PiezoelectricDisk
     LocalCoordinatesFromGlobal
     LaplaceRectangle
@@ -50,5 +56,5 @@ foreach(myFile
     Electrostatics
    )
 ADD_EXECUTABLE(${myFile} ${myFile}.cpp)
-TARGET_LINK_LIBRARIES(${myFile} NuTo::Mechanics NuTo::Math NuTo::Base NuTo::Visualize ${Boost_LIBRARIES} ${LAPACK_LIBRARIES} ${ARPACK_LIBRARY})
+TARGET_LINK_LIBRARIES(${myFile} NuTo ${Boost_LIBRARIES} ${LAPACK_LIBRARIES} ${ARPACK_LIBRARY})
 endforeach(myFile)
