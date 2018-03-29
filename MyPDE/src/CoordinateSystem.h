@@ -5,7 +5,12 @@
 
 using namespace NuTo;
 
+template<int TDim>
 class CoordinateSystem {
+
+    using Matrix = Eigen::Matrix<double,TDim,TDim>;
+    using Vector = Eigen::Matrix<double,TDim,1>;
+
 public:
   //! @brief Coordinate system
   //! @param J columns represent basis vectors (tangential basis)
@@ -19,8 +24,8 @@ public:
   //! @param K3 for a curved coordinates system like
   //! {x(u1,u2,u3),y(u1,u2,u3),z(u1,u2,u3)} the second derivatives
   //! d2z/duiduj
-  CoordinateSystem(Eigen::Matrix3d J, std::vector<Eigen::Matrix3d> K) : mJ(J) {
-    for (int i = 0; i < 3; i++) {
+  CoordinateSystem(Matrix J, std::vector<Matrix> K) : mJ(J) {
+    for (int i = 0; i < TDim; i++) {
       mK.push_back(K[i]);
     }
   }
@@ -28,15 +33,17 @@ public:
   //! @brief Coordinate system, zero curvature (second derivatives zero)
   //! @param J columns represent basis vectors (tangential basis)
   //! in cartesian coordinates
-  CoordinateSystem(Eigen::Matrix3d J) : mJ(J) {
-    for (int i = 0; i < 3; i++) {
-      mK.push_back(Eigen::Matrix3d::Zero());
+  CoordinateSystem(Matrix J) : mJ(J) {
+    for (int i = 0; i < TDim; i++) {
+      mK.push_back(Matrix::Zero());
     }
   }
 
-  virtual Eigen::Matrix3d GetMetric() { return mJ.transpose() * mJ; }
+  virtual Matrix GetMetric() { return mJ.transpose() * mJ; }
 
-  virtual Eigen::Matrix3d GetJ() { return mJ; }
+  virtual Matrix GetJ() { return mJ; }
+
+  virtual double GetDetJ() { return mJ.determinant(); }
 
   //! @brief ChristoffelSymbols 2nd kind
   //!
@@ -46,12 +53,12 @@ public:
   //!
   //! @param J columns represent basis vectors (tangential basis)
   //! in cartesian coordinates
-  virtual std::vector<Eigen::Matrix3d> GetChristoffelSymbols() {
-    std::vector<Eigen::Matrix3d> result(3);
-    Eigen::Matrix3d Jinv = mJ.inverse();
-    for (int i = 0; i < 3; i++) {
-      Eigen::Matrix3d gamma = Eigen::Matrix3d::Zero();
-      for (int l = 0; l < 3; l++)
+  virtual std::vector<Matrix> GetChristoffelSymbols() {
+    std::vector<Matrix> result(TDim);
+    Matrix Jinv = mJ.inverse();
+    for (int i = 0; i < TDim; i++) {
+      Matrix gamma = Matrix::Zero();
+      for (int l = 0; l < TDim; l++)
         gamma += mK[i] * Jinv(i, l);
       result[i] = gamma;
     }
@@ -61,67 +68,67 @@ public:
   //------------------------ Vector transforms -------------------------
 
   //! @brief Transforms vector from cartesian to tangent basis
-  Eigen::Vector3d TransformVectorCtoT(Eigen::VectorXd v) {
+  Vector TransformVectorCtoT(Eigen::VectorXd v) {
     return mJ.inverse() * v;
   }
 
   //! @brief Transforms vector from cartesian to gradient basis
-  Eigen::Vector3d TransformVectorCtoG(Eigen::VectorXd v) {
+  Vector TransformVectorCtoG(Eigen::VectorXd v) {
     return mJ.transpose() * v;
   }
 
   //! @brief Transforms vector from tangent to cartesian basis
-  Eigen::Vector3d TransformVectorTtoC(Eigen::VectorXd v) { return mJ * v; }
+  Vector TransformVectorTtoC(Eigen::VectorXd v) { return mJ * v; }
 
   //! @brief Transforms vector from gradient to cartesian basis
-  Eigen::Vector3d TransformVectorGtoC(Eigen::VectorXd v) {
+  Vector TransformVectorGtoC(Eigen::VectorXd v) {
     return (mJ.inverse()).transpose() * v;
   }
 
   //! @brief Transforms vector from gradient to tangent basis
-  Eigen::Vector3d TransformVectorGtoT(Eigen::VectorXd v) {
+  Vector TransformVectorGtoT(Eigen::VectorXd v) {
     return GetMetric().inverse() * v;
   }
 
   //! @brief Transforms vector from tangent to gradient basis
-  Eigen::Vector3d TransformVectorTtoG(Eigen::VectorXd v) {
+  Vector TransformVectorTtoG(Eigen::VectorXd v) {
     return GetMetric() * v;
   }
 
   //------------------------ Tensor transforms -------------------------
   //! @brief Transforms vector from cartesian to tangent basis
-  Eigen::Matrix3d TransformTensorCCtoTT(Eigen::Matrix3d v) {
+  Matrix TransformTensorCCtoTT(Matrix v) {
     return mJ.inverse() * v * mJ.inverse().transpose();
   }
 
   //! @brief Transforms vector from cartesian to gradient basis
-  Eigen::Matrix3d TransformTensorCCtoGG(Eigen::Matrix3d v) {
+  Matrix TransformTensorCCtoGG(Matrix v) {
       return mJ.transpose() * v * mJ;
   }
 
   //! @brief Transforms vector from tangent to cartesian basis
-  Eigen::Matrix3d TransformTensorTTtoCC(Eigen::Matrix3d v) {
+  Matrix TransformTensorTTtoCC(Matrix v) {
       return mJ * v * mJ.transpose();
   }
 
   //! @brief Transforms vector from gradient to cartesian basis
-  Eigen::Matrix3d TransformTensorGGtoCC(Eigen::Matrix3d v) {
+  Matrix TransformTensorGGtoCC(Matrix v) {
       return (mJ.inverse()).transpose() * v * mJ.inverse();
   }
 
   //! @brief Transforms vector from gradient to tangent basis
-  Eigen::Matrix3d TransformTensorGGtoTT(Eigen::Matrix3d v) {
+  Matrix TransformTensorGGtoTT(Matrix v) {
       return GetMetric().inverse() * v * GetMetric().inverse().transpose();
   }
 
   //! @brief Transforms vector from tangent to gradient basis
-  Eigen::Matrix3d TransformTensorTTtoGG(Eigen::Matrix3d v) {
+  Matrix TransformTensorTTtoGG(Matrix v) {
       return GetMetric() * v * GetMetric().transpose();
   }
 
 protected:
-  Eigen::Matrix3d mJ;
+  Matrix mJ;
 
 private:
-  std::vector<Eigen::Matrix3d> mK;
+  std::vector<Matrix> mK;
 };

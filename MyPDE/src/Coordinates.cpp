@@ -9,8 +9,9 @@
 
 #include "nuto/mechanics/integrationtypes/IntegrationTypeTensorProduct.h"
 #include "nuto/mechanics/tools/CellStorage.h"
-#include "nuto/visualize/AverageHandler.h"
 #include "nuto/visualize/Visualizer.h"
+#include "nuto/visualize/VoronoiGeometries.h"
+#include "nuto/visualize/VoronoiHandler.h"
 
 #include <iostream>
 
@@ -39,7 +40,7 @@ void TestCoordinatesClasses() {
       0., 5., 0.,   //
       0., 0., 6.;   //
 
-  CoordinateSystem coos(J, {K1, K2, K3});
+  CoordinateSystem<3> coos(J, {K1, K2, K3});
 
   std::cout << "Jacobian/Transformationmatrix\n";
   std::cout << coos.GetJ();
@@ -55,7 +56,7 @@ void TestCoordinatesClasses() {
   std::cout << coos.GetChristoffelSymbols()[2];
   std::cout << std::endl;
 
-  OrthonormalCoordinateSystem ocoos(J);
+  OrthonormalCoordinateSystem<3> ocoos(J);
 
   std::cout << "Jacobian/Transformationmatrix\n";
   std::cout << ocoos.GetJ();
@@ -132,7 +133,7 @@ void TestVectorGradient() {
       0., 5., 0.,   //
       0., 0., 6.;   //
 
-  CoordinateSystem coos(J, {K1, K2, K3});
+  CoordinateSystem<3> coos(J, {K1, K2, K3});
 
   int numNodes = 4;
   int dim = 3;
@@ -154,7 +155,7 @@ void TestLinearSystem() {
 
   std::cout << jac << std::endl;
 
-  CoordinateSystem cs(jac);
+  CoordinateSystem<3> cs(jac);
 
   Eigen::Vector3d v(1, 1, 1);
 
@@ -174,8 +175,9 @@ void TestCylindrical() {
   Eigen::Vector3d v(10., M_PI, 1.);
   std::cout << cs.GetCartesian(v) << std::endl;
 
-  CoordinateSystem coos = cs.GetNaturalCOOS(v);
-  std::cout << coos.GetMetric() << std::endl;
+  CoordinateSystem<3> coos = cs.GetNaturalCOOS(v);
+  std::cout << "Metrix:\n" << coos.GetMetric() << std::endl;
+  std::cout << "JacobianDeterminant: \n" << coos.GetDetJ() << std::endl;
 }
 
 void TestSpherical() {
@@ -184,7 +186,7 @@ void TestSpherical() {
   Eigen::Vector3d v(10., M_PI, 1.);
   std::cout << cs.GetCartesian(v) << std::endl;
 
-  CoordinateSystem coos = cs.GetNaturalCOOS(v);
+  CoordinateSystem<3> coos = cs.GetNaturalCOOS(v);
   std::cout << coos.GetMetric() << std::endl;
 }
 
@@ -198,7 +200,7 @@ void TestSkewLinearSystem() {
 
   std::cout << jac << std::endl;
 
-  CoordinateSystem cs(jac);
+  CoordinateSystem<3> cs(jac);
 
   Eigen::Vector3d v(0, 0, 1);
 
@@ -219,7 +221,9 @@ void TestScalarGradient() {
     double y = coords[1];
     double z = coords[2];
 
-    return 0.1 * x * x + 0.3 * y * y + z * z;
+    double r = sqrt(x * x + y * y + z * z);
+
+    return sin(M_PI * r);
   };
 
   auto dfCartesian = [](Eigen::Vector3d coords) {
@@ -227,7 +231,17 @@ void TestScalarGradient() {
     double y = coords[1];
     double z = coords[2];
 
-    return Eigen::Vector3d(0.2 * x, 0.6 * y, 2. * z);
+    double r = sqrt(x * x + y * y + z * z);
+
+    Eigen::Vector3d result(x, y, z);
+    result *= 1. / (r + 1e-10) * M_PI * cos(M_PI * r);
+
+    return result;
+  };
+
+  auto fSpherical = [](Eigen::Vector3d coords) {
+    double r = coords[0];
+    return sin(M_PI * r);
   };
 
   // Set up a mesh
@@ -254,19 +268,25 @@ void TestScalarGradient() {
   Group<CellInterface> cellGroup =
       cells.AddCells(m.ElementsTotal(), integrationType3D);
 
-  NuTo::Visualize::Visualizer visualize(cellGroup,
-                                        NuTo::Visualize::AverageHandler());
+  NuTo::Visualize::Visualizer visualize(
+      cellGroup,
+      NuTo::Visualize::VoronoiHandler(
+          NuTo::Visualize::VoronoiGeometryBrick(1, Visualize::GAUSS)));
   visualize.DofValues(dof);
+  visualize.PointData(dfCartesian, "gradient");
+
+  std::cout << "Attempt to write file" << std::endl;
+
   visualize.WriteVtuFile("CoordinatesTest.vtu");
 }
 
 int main(int argc, char *argv[]) {
-  TestScalarGradient();
-  // TestCylindrical();
-  // TestSpherical();
-  //  TestLinearSystem();
-  //  TestSkewLinearSystem();
-  //  TestCoordinatesClasses();
+  // TestScalarGradient();
+  TestCylindrical();
+  TestSpherical();
+  TestLinearSystem();
+  TestSkewLinearSystem();
+  TestCoordinatesClasses();
   //  TestMultiGradient();
   //  TestCurl3D();
   //  TestCurl2D();

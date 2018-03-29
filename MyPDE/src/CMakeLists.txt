@@ -39,6 +39,7 @@ foreach(myFile
     LaplacePolarCoordinates
     LaplaceLine
     LaplaceCircle
+    InterpolationHierarchical
     LaplaceAnnulus
     PoissonLine
     WaveLine

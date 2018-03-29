@@ -140,7 +140,7 @@ struct MultiComponentGradient : Interface
 
 struct VectorGradientCOOS : Interface
 {
-    VectorGradientCOOS(CoordinateSystem cs) : mCS(cs)
+    VectorGradientCOOS(CoordinateSystem<3> cs) : mCS(cs)
     {
 
     }
@@ -175,7 +175,7 @@ struct VectorGradientCOOS : Interface
         return B;
     }
 
-    CoordinateSystem& mCS;
+    CoordinateSystem<3>& mCS;
 };
 
 } /* B */

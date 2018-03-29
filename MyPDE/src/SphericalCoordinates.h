@@ -24,7 +24,7 @@ public:
     return Eigen::Vector3d(x, y, z);
   }
 
-  CoordinateSystem GetNaturalCOOS(Eigen::Vector3d coords) {
+  CoordinateSystem<3> GetNaturalCOOS(Eigen::Vector3d coords) {
     // unpack
     double r = coords[0];
     double theta = coords[1];
@@ -58,8 +58,8 @@ public:
         -sin(theta), -r * cos(theta), 0, //
         0, 0, 0;
 
-    return CoordinateSystem(J, {K1, K2, K3});
+    return CoordinateSystem<3>(J, {K1, K2, K3});
   }
 
-  OrthonormalCoordinateSystem GetOrthonormalCOOS(Eigen::Vector3d coords) {}
+  OrthonormalCoordinateSystem<3> GetOrthonormalCOOS(Eigen::Vector3d coords) {}
 };
