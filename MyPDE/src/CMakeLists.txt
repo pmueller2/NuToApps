@@ -20,9 +20,11 @@ foreach(inputFile
         plateWithInternalCrackHexedOrder2.msh
         plateWithInternalCrack0.5Hexed2ndOrder.msh
         rectangle100x100.msh
+        rectangle10x10.msh
         rectangleWithInternalCrack01.msh
         circle.msh
         annulus.msh
+        annulus2ndOrder.msh
     )
     execute_process(COMMAND "${CMAKE_COMMAND}" "-E" "create_symlink"
         "${CMAKE_CURRENT_SOURCE_DIR}/${inputFile}"
@@ -32,29 +34,22 @@ endforeach()
 
 foreach(myFile
     Coordinates
-    TestNormal
-    PiezoelectricDisk
-    LocalCoordinatesFromGlobal
-    LaplaceRectangle
-    LaplacePolarCoordinates
-    LaplaceLine
-    LaplaceCircle
-    InterpolationHierarchical
-    LaplaceAnnulus
-    PoissonLine
-    WaveLine
-    Interpolation1DTests
-    Wave1DTests
-    SimplexShapes
     ElasticityRectangleDynamic
     ElasticityDiskDynamic
     ElasticityLShapedDomain
-    InterpolationTrigonometricTest
     ElasticityPlateTiltedCrack
     ElasticityRectangleTiltedCrack
     HelmholtzRectangle
-    PoissonRectangle
-    Electrostatics
+    InterpolationHierarchical
+    Interpolation1DTests
+    InterpolationTrigonometricTest
+    LocalCoordinatesFromGlobal
+    LaplacePolarCoordinates
+    Poisson2D
+    PiezoelectricDisk
+    SimplexShapes
+    Wave1DTests
+    WaveLine
    )
 ADD_EXECUTABLE(${myFile} ${myFile}.cpp)
 TARGET_LINK_LIBRARIES(${myFile} NuTo ${Boost_LIBRARIES} ${LAPACK_LIBRARIES} ${ARPACK_LIBRARY})

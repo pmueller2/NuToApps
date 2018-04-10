@@ -61,7 +61,7 @@ public:
         return loadLocal;
     }
 
-    DofVector<double> NormalNeumannLoad(const CellIpData& cipd, std::function<Eigen::Matrix<double,TDim,1>(Eigen::Matrix<double,TDim,1>)> f)
+    DofVector<double> NeumannLoadWithGivenGradient(const CellIpData& cipd, std::function<Eigen::Matrix<double,TDim,1>(Eigen::Matrix<double,TDim,1>)> f)
     {
         Eigen::MatrixXd N = cipd.N(mDof);
         DofVector<double> loadLocal;
@@ -69,6 +69,24 @@ public:
         double normalComponent = f(cipd.GlobalCoordinates()).dot(cipd.GetJacobian().Normal());
 
         loadLocal[mDof] = N.transpose() * normalComponent;
+        return loadLocal;
+    }
+
+    DofVector<double> NeumannLoad(const CellIpData& cipd, std::function<double(Eigen::Matrix<double,TDim,1>)> fN)
+    {
+        Eigen::MatrixXd N = cipd.N(mDof);
+        DofVector<double> loadLocal;
+
+        loadLocal[mDof] = N.transpose() * fN(cipd.GlobalCoordinates());
+        return loadLocal;
+    }
+
+    DofVector<double> NeumannLoad(const CellIpData& cipd, double fN)
+    {
+        Eigen::MatrixXd N = cipd.N(mDof);
+        DofVector<double> loadLocal;
+
+        loadLocal[mDof] = N.transpose() * fN;
         return loadLocal;
     }
 
