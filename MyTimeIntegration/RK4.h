@@ -1,7 +1,7 @@
 #pragma once
 
 #include <vector>
-#include "mechanics/timeIntegration/ExplicitRungeKutta.h"
+#include "ExplicitRungeKutta.h"
 
 namespace NuTo
 {

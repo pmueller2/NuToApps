@@ -15,6 +15,8 @@ foreach(inputFile
         disk02.msh
         cube5.msh
         cube1.msh
+        Crack2D_1.msh
+        Crack2D_2.msh
         diskRegular_middle.msh
         plateWithInternalCrackHexed.msh
         plateWithInternalCrackHexedOrder2.msh
@@ -34,8 +36,9 @@ endforeach()
 
 foreach(myFile
     Coordinates
-    ElasticityRectangleDynamic
+    ElasticityCrackOpening2D
     ElasticityDiskDynamic
+    ElasticityRectangleDynamic
     ElasticityLShapedDomain
     ElasticityPlateTiltedCrack
     ElasticityRectangleTiltedCrack
@@ -44,11 +47,11 @@ foreach(myFile
     Interpolation1DTests
     InterpolationTrigonometricTest
     LocalCoordinatesFromGlobal
-    LaplacePolarCoordinates
     Poisson2D
     PiezoelectricDisk
     SimplexShapes
     Wave1DTests
+    Wave2D
     WaveLine
    )
 ADD_EXECUTABLE(${myFile} ${myFile}.cpp)

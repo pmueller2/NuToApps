@@ -9,35 +9,35 @@ namespace NuTo
 namespace Tools
 {
 
-void SetValues(Group<ElementCollectionFem>& elements, DofType dof, std::function<double(Eigen::VectorXd)> func)
+void SetValues(Group<ElementCollectionFem>& elements, DofType dof, std::function<double(Eigen::VectorXd)> func, int instance = 0)
 {
     for (NuTo::ElementCollectionFem &elmColl : elements) {
       NuTo::ElementFem &elmCoord = elmColl.CoordinateElement();
       NuTo::ElementFem &elmDof = elmColl.DofElement(dof);
       for (int i = 0; i < elmDof.Interpolation().GetNumNodes(); i++) {
-        elmDof.GetNode(i).SetValue(0,func(Interpolate(elmCoord, elmDof.Interpolation().GetLocalCoords(i))));
+        elmDof.GetNode(i).SetValue(0,func(Interpolate(elmCoord, elmDof.Interpolation().GetLocalCoords(i))),instance);
       }
     }
 }
 
-void SetValues(Group<ElementCollectionFem>& elements, DofType dof, std::function<Eigen::VectorXd(Eigen::VectorXd)> func)
+void SetValues(Group<ElementCollectionFem>& elements, DofType dof, std::function<Eigen::VectorXd(Eigen::VectorXd)> func, int instance = 0)
 {
     for (NuTo::ElementCollectionFem &elmColl : elements) {
       NuTo::ElementFem &elmCoord = elmColl.CoordinateElement();
       NuTo::ElementFem &elmDof = elmColl.DofElement(dof);
       for (int i = 0; i < elmDof.Interpolation().GetNumNodes(); i++) {
-        elmDof.GetNode(i).SetValues(func(Interpolate(elmCoord, elmDof.Interpolation().GetLocalCoords(i))));
+        elmDof.GetNode(i).SetValues(func(Interpolate(elmCoord, elmDof.Interpolation().GetLocalCoords(i))),instance);
       }
     }
 }
 
-void SetValues(Group<ElementCollectionFem>& elements, DofType dof, std::function<double(double)> func)
+void SetValues(Group<ElementCollectionFem>& elements, DofType dof, std::function<double(double)> func, int instance = 0)
 {
     for (NuTo::ElementCollectionFem &elmColl : elements) {
       NuTo::ElementFem &elmCoord = elmColl.CoordinateElement();
       NuTo::ElementFem &elmDof = elmColl.DofElement(dof);
       for (int i = 0; i < elmDof.Interpolation().GetNumNodes(); i++) {
-        elmDof.GetNode(i).SetValue(0,func(Interpolate(elmCoord, elmDof.Interpolation().GetLocalCoords(i))[0]));
+        elmDof.GetNode(i).SetValue(0,func(Interpolate(elmCoord, elmDof.Interpolation().GetLocalCoords(i))[0]),instance);
       }
     }
 }

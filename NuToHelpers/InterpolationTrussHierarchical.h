@@ -13,7 +13,7 @@ public:
     InterpolationTrussHierarchical(int degree) : mDegree(degree)
     {
         if (mDegree<1)
-            throw Exception(__PRETTY_FUNCTION__,"Degree must be at lleast 1.");
+            throw Exception(__PRETTY_FUNCTION__,"Degree must be at least 1.");
     }
 
     std::unique_ptr<InterpolationSimple> Clone() const override

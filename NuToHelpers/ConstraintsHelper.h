@@ -63,5 +63,18 @@ std::vector<Equation> SetDirichletBoundaryNodes(DofType dof,
 }
 
 } /* Constraint */
+
+Group<NodeSimple> GetNodes(const NuTo::Group<ElementCollectionFem> g, DofType dof)
+{
+    Group<NodeSimple> nodes;
+    for (auto &elm : g) {
+      auto &e = elm.DofElement(dof);
+      for (int i = 0; i < e.GetNumNodes(); i++) {
+        nodes.Add(e.GetNode(i));
+      }
+    }
+    return nodes;
+}
+
 } /* NuTo */
 
