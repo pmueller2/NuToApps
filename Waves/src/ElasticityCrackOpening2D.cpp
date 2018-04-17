@@ -109,8 +109,11 @@ int main(int argc, char *argv[]) {
   DofInfo dofInfo =
       DofNumbering::Build(mesh.NodesTotal(dof1), dof1, constraints);
 
+  int numDofs =
+      dofInfo.numIndependentDofs[dof1] + dofInfo.numDependentDofs[dof1];
+
   Eigen::SparseMatrix<double> cmat =
-      constraints.BuildConstraintMatrix(dof1, dofInfo.numIndependentDofs[dof1]);
+      constraints.BuildUnitConstraintMatrix(dof1, numDofs);
 
   SimpleAssembler asmbl = SimpleAssembler(dofInfo);
 
@@ -118,31 +121,21 @@ int main(int argc, char *argv[]) {
       domainCellGroup, {dof1},
       [&](const CellIpData &cipd) { return pde.Hessian2(cipd); });
 
-  auto mJ = lumpedMassMx.J[dof1];
-  auto mK = lumpedMassMx.K[dof1];
-
-  Eigen::SparseMatrix<double> massModifier =
-      cmat.transpose() * mK.asDiagonal() * cmat;
-
-  Eigen::VectorXd massMxMod = mJ + massModifier.diagonal();
+  Eigen::SparseMatrix<double> massMxModFull =
+      cmat.transpose() * lumpedMassMx[dof1].asDiagonal() * cmat;
+  Eigen::VectorXd massMxMod = massMxModFull.diagonal();
 
   // ***********************************
   //    Assemble stiffness matrix
   // ***********************************
 
-  GlobalDofMatrixSparse stiffnessMx =
+  DofMatrixSparse<double> stiffnessMx =
       asmbl.BuildMatrix(domainCellGroup, {dof1}, [&](const CellIpData &cipd) {
         return pde.Hessian0(cipd, 0.);
       });
 
-  // Compute modified stiffness matrix
-  auto kJJ = stiffnessMx.JJ(dof1, dof1);
-  auto kJK = stiffnessMx.JK(dof1, dof1);
-  auto kKJ = stiffnessMx.KJ(dof1, dof1);
-  auto kKK = stiffnessMx.KK(dof1, dof1);
-
   Eigen::SparseMatrix<double> stiffnessMxMod =
-      kJJ - cmat.transpose() * kKJ - kJK * cmat + cmat.transpose() * kKK * cmat;
+      cmat.transpose() * stiffnessMx(dof1, dof1) * cmat;
 
   // *********************************
   //      Visualize
@@ -195,16 +188,13 @@ int main(int argc, char *argv[]) {
 
   auto eq = [&](const Eigen::VectorXd &w, Eigen::VectorXd &d2wdt2, double t) {
     // Compute load
-    GlobalDofVector boundaryLoad =
+    DofVector<double> boundaryLoad =
         asmbl.BuildVector(crackCellGroup, {dof1}, [&](const CellIpData cipd) {
           return crackLoadFunc(cipd, t);
         });
     // Include constraints
-    auto fJ = boundaryLoad.J[dof1];
-    auto fK = boundaryLoad.K[dof1];
     auto b = constraints.GetRhs(dof1, t);
-    Eigen::VectorXd loadVectorMod = fJ - cmat.transpose() * fK;
-    loadVectorMod -= (kJK * b - cmat.transpose() * kKK * b);
+    Eigen::VectorXd loadVectorMod = cmat.transpose() * boundaryLoad[dof1];
 
     Eigen::VectorXd tmp = (-stiffnessMxMod * w + loadVectorMod);
     d2wdt2 = (tmp.array() / massMxMod.array()).matrix();
