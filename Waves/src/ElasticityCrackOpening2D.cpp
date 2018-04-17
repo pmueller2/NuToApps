@@ -43,7 +43,7 @@ int main(int argc, char *argv[]) {
   //      Geometry parameter
   // *********************************
 
-  MeshGmsh gmsh("Crack2D_2.msh");
+  MeshGmsh gmsh("Crack2D_1.msh");
   MeshFem &mesh = gmsh.GetMeshFEM();
   auto bottom = gmsh.GetPhysicalGroup("Bottom");
   auto left = gmsh.GetPhysicalGroup("Left");
@@ -192,9 +192,10 @@ int main(int argc, char *argv[]) {
         asmbl.BuildVector(crackCellGroup, {dof1}, [&](const CellIpData cipd) {
           return crackLoadFunc(cipd, t);
         });
-    // Include constraints
-    auto b = constraints.GetRhs(dof1, t);
     Eigen::VectorXd loadVectorMod = cmat.transpose() * boundaryLoad[dof1];
+    // Include constraints
+    auto B = constraints.GetSparseGlobalRhs(dof1, numDofs, t);
+    loadVectorMod -= cmat.transpose() * stiffnessMx(dof1, dof1) * B;
 
     Eigen::VectorXd tmp = (-stiffnessMxMod * w + loadVectorMod);
     d2wdt2 = (tmp.array() / massMxMod.array()).matrix();
@@ -204,10 +205,9 @@ int main(int argc, char *argv[]) {
   for (int i = 0; i < numSteps; i++) {
     t = i * stepSize;
     state = ti.DoStep(eq, state.first, state.second, t, stepSize);
-    femResult.head(dofInfo.numIndependentDofs[dof1]) = state.first;
-    // Compute Dependent Dofs
-    femResult.tail(dofInfo.numDependentDofs[dof1]) =
-        -cmat * state.first + constraints.GetRhs(dof1, (i + 1) * stepSize);
+    femResult =
+        cmat * state.first +
+        constraints.GetSparseGlobalRhs(dof1, numDofs, (i + 1) * stepSize);
     std::cout << i + 1 << std::endl;
     if ((i * 100) % numSteps == 0) {
       MergeResult(femResult);
