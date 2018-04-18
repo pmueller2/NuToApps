@@ -10,9 +10,14 @@ namespace NuTo
 namespace Constraint
 {
 
-Eigen::VectorXi GetDependentGlobalDofNumbering(Constraints constraints, DofType dof, int numDofs)
+Eigen::VectorXi GetJKNumbering(Constraints constraints, DofType dof, int numDofs)
 {
-    Eigen::VectorXi dependentGlobalNumbering(constraints.GetNumEquations(dof));
+    int numJ = numDofs - constraints.GetNumEquations(dof);
+    int numK = constraints.GetNumEquations(dof);
+    Eigen::VectorXi independentGlobalNumbering(numJ);
+    Eigen::VectorXi dependentGlobalNumbering(numK);
+
+    std::vector<bool> isDofConstrained(numDofs, false);
     for (int i = 0; i < constraints.GetNumEquations(dof); i++) {
       int globalDofNumber =
           constraints.GetEquation(dof, i).GetDependentDofNumber();
@@ -25,35 +30,22 @@ Eigen::VectorXi GetDependentGlobalDofNumbering(Constraints constraints, DofType 
                         "The provided dof number of the dependent term exceeds "
                         "the total number of dofs in equation " +
                             std::to_string(i) + ".");
-      dependentGlobalNumbering[i] = globalDofNumber;
+      isDofConstrained[globalDofNumber] = true;
+      dependentGlobalNumbering(i) = globalDofNumber;
     }
-    return dependentGlobalNumbering;
-}
 
-Eigen::VectorXi GetIndependentGlobalDofNumbering(Constraints constraints, DofType dof, int numDofs)
-{
-    Eigen::VectorXi dep = GetDependentGlobalDofNumbering(constraints, dof, numDofs);
-    std::sort(dep.data(),dep.data()+dep.size());
-
-    auto isConstrained = [&](int val){
-        auto first =dep.data();
-        auto last = dep.data() + dep.size();
-        auto it = std::lower_bound(first,last,val);
-        if ( (it != last) && (*it == val) )
-            return true;
-        return false;
-    };
-
-    Eigen::VectorXi indep(numDofs - constraints.GetNumEquations(dof));
-    int count = 0;
+    int independentCount = 0;
     for (int i=0; i<numDofs; i++)
     {
-        if (isConstrained(i))
+        if (isDofConstrained[i])
             continue;
-        indep(count) = i;
-        count++;
+        independentGlobalNumbering(independentCount) = i;
+        independentCount++;
     }
-    return indep;
+    Eigen::VectorXi globalNumbering(numDofs);
+    globalNumbering << independentGlobalNumbering,dependentGlobalNumbering;
+
+    return globalNumbering;
 }
 
 std::vector<Equation> SetDirichletBoundaryNodes(DofType dof,

@@ -31,6 +31,18 @@ int main(int argc, char *argv[]) {
   auto &ndA_9 = mesh.NodeAtCoordinate(Eigen::VectorXd::Constant(1, 0.9), dofA);
   auto &ndA_10 = mesh.NodeAtCoordinate(Eigen::VectorXd::Constant(1, 1.0), dofA);
 
+  ndA_0.SetValue(0, 0.0);
+  ndA_1.SetValue(0, 0.1);
+  ndA_2.SetValue(0, 0.2);
+  ndA_3.SetValue(0, 0.3);
+  ndA_4.SetValue(0, 0.4);
+  ndA_5.SetValue(0, 0.5);
+  ndA_6.SetValue(0, 0.6);
+  ndA_7.SetValue(0, 0.7);
+  ndA_8.SetValue(0, 0.8);
+  ndA_9.SetValue(0, 0.9);
+  ndA_10.SetValue(0, 1.0);
+
   Constraint::Constraints constraints;
 
   Constraint::Equation eq1(ndA_8, 0, [](double) { return 0.; });
@@ -50,57 +62,51 @@ int main(int argc, char *argv[]) {
   dofInfo.numIndependentDofs[dofA] = numDofsA - dofInfo.numDependentDofs[dofA];
 
   // Numbering without paying attention to constraints
-  int dofNumber = 0;
-  for (auto &node : mesh.NodesTotal(dofA))
-    for (int iComponent = 0; iComponent < node.GetNumValues(); ++iComponent)
-      node.SetDofNumber(iComponent, dofNumber++);
+  ndA_0.SetDofNumber(0, 0);
+  ndA_1.SetDofNumber(0, 1);
+  ndA_2.SetDofNumber(0, 2);
+  ndA_3.SetDofNumber(0, 3);
+  ndA_4.SetDofNumber(0, 4);
+  ndA_5.SetDofNumber(0, 5);
+  ndA_6.SetDofNumber(0, 6);
+  ndA_7.SetDofNumber(0, 7);
+  ndA_8.SetDofNumber(0, 8);
+  ndA_9.SetDofNumber(0, 9);
+  ndA_10.SetDofNumber(0, 10);
 
-  Eigen::VectorXi independentGlobalNumbering(dofInfo.numIndependentDofs[dofA]);
-  Eigen::VectorXi dependentGlobalNumbering(dofInfo.numDependentDofs[dofA]);
-
-  // ***************************************
-  // This is a copy from the constraint matrix stuff
-  // ***************************************
-
-  //  // create a vector with all dofs with false:independent true:dependent dof
-  std::vector<bool> isDofConstraint(numDofsA, false);
-  for (int i = 0; i < constraints.GetNumEquations(dofA); i++) {
-    int globalDofNumber =
-        constraints.GetEquation(dofA, i).GetDependentDofNumber();
-    if (globalDofNumber == -1 /* should be NodeSimple::NOT_SET */)
-      throw Exception(__PRETTY_FUNCTION__,
-                      "There is no dof numbering for a node in equation" +
-                          std::to_string(i) + ".");
-    if (globalDofNumber >= numDofsA)
-      throw Exception(__PRETTY_FUNCTION__,
-                      "The provided dof number of the dependent term exceeds "
-                      "the total number of dofs in equation " +
-                          std::to_string(i) + ".");
-    isDofConstraint[globalDofNumber] = true;
+  // Extract values
+  Eigen::VectorXd values(11);
+  values.setOnes();
+  values *= 42;
+  for (NodeSimple &nd : mesh.NodesTotal(dofA)) {
+    values(nd.GetDofNumber(0)) = nd.GetValues()(0);
   }
+  std::cout << "Values" << values << std::endl;
 
-  int independent = 0;
-  int dependent = 0;
-  for (int i = 0; i < numDofsA; i++) {
-    if (isDofConstraint[i]) {
-      dependentGlobalNumbering(dependent) = i;
-      dependent++;
-    } else {
-      independentGlobalNumbering(independent) = i;
-      independent++;
+  auto numbering = Constraint::GetJKNumbering(constraints, dofA, numDofsA);
+  std::cout << "independentGlobalNumbering\n"
+            << numbering.head(numDofsA - constraints.GetNumEquations(dofA))
+            << std::endl;
+  std::cout << "dependentGlobalNumbering\n"
+            << numbering.tail(constraints.GetNumEquations(dofA)) << std::endl;
+
+  Eigen::PermutationMatrix<Eigen::Dynamic> P(numbering);
+  std::cout << "Global to JK ordering\n" << P.transpose() * values << std::endl;
+
+  Eigen::MatrixXd M1(11, 11);
+  Eigen::MatrixXd M2(11, 11);
+  for (int i = 0; i < 11; i++) {
+    for (int j = 0; j < 11; j++) {
+      M1(i, j) = i;
+      M2(i, j) = j;
     }
   }
-  assert(independent + dependent == numDofsA);
 
-  std::cout << "independentGlobalNumbering\n"
-            << independentGlobalNumbering << std::endl;
-  std::cout << "dependentGlobalNumbering\n"
-            << dependentGlobalNumbering << std::endl;
+  std::cout << "M1 \n" << M1 << std::endl;
+  std::cout << "M1 Global to JK ordering\n"
+            << P.transpose() * M1 * P << std::endl;
 
-  auto numbD =
-      Constraint::GetDependentGlobalDofNumbering(constraints, dofA, numDofsA);
-  std::cout << "dependentGlobalNumbering\n" << numbD << std::endl;
-  auto numbI =
-      Constraint::GetIndependentGlobalDofNumbering(constraints, dofA, numDofsA);
-  std::cout << "independentGlobalNumbering\n" << numbI << std::endl;
+  std::cout << "M2 \n" << M1 << std::endl;
+  std::cout << "M2 Global to JK ordering\n"
+            << P.transpose() * M2 * P << std::endl;
 }
