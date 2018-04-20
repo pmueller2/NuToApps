@@ -4,6 +4,7 @@ set(CMAKE_CXX_STANDARD 14)
 
 find_package(NuTo)
 
+set(CMAKE_LIBRARY_ARCHITECTURE "x86_64-linux-gnu")
 # look for library files, including default paths
 find_library(ARPACK_LIBRARY
   NAMES "arpack"
@@ -35,24 +36,24 @@ foreach(inputFile
 endforeach()
 
 foreach(myFile
-    Coordinates
-    ElasticityCrackOpening2D
-    ElasticityDiskDynamic
-    ElasticityRectangleDynamic
-    ElasticityLShapedDomain
-    ElasticityPlateTiltedCrack
-    ElasticityRectangleTiltedCrack
-    HelmholtzRectangle
-    InterpolationHierarchical
-    Interpolation1DTests
-    InterpolationTrigonometricTest
-    LocalCoordinatesFromGlobal
+    #Coordinates
+    #ElasticityCrackOpening2D
+    #ElasticityDiskDynamic
+    #ElasticityRectangleDynamic
+    #ElasticityLShapedDomain
+    #ElasticityPlateTiltedCrack
+    #ElasticityRectangleTiltedCrack
+    #HelmholtzRectangle
+    #InterpolationHierarchical
+    #Interpolation1DTests
+    #InterpolationTrigonometricTest
+    #LocalCoordinatesFromGlobal
     Poisson2D
-    PiezoelectricDisk
-    SimplexShapes
+    #PiezoelectricDisk
+    #SimplexShapes
     Wave1DTests
     Wave2D
-    WaveLine
+    #WaveLine
    )
 ADD_EXECUTABLE(${myFile} ${myFile}.cpp)
 TARGET_LINK_LIBRARIES(${myFile} NuTo ${Boost_LIBRARIES} ${LAPACK_LIBRARIES} ${ARPACK_LIBRARY})

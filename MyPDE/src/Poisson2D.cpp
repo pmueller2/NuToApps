@@ -126,20 +126,22 @@ public:
 
     DofInfo dofInfo =
         DofNumbering::Build(mesh.NodesTotal(dof1), dof1, constraints);
+    int numDofs =
+        dofInfo.numIndependentDofs[dof1] + dofInfo.numDependentDofs[dof1];
 
     SimpleAssembler asmbl = SimpleAssembler(dofInfo);
 
-    GlobalDofMatrixSparse stiffnessMx =
+    DofMatrixSparse<double> stiffnessMx =
         asmbl.BuildMatrix(domainCellGroup, {dof1}, [&](const CellIpData &cipd) {
           return pde.StiffnessMatrix(cipd);
         });
 
-    GlobalDofVector loadVector =
+    DofVector<double> loadVector =
         asmbl.BuildVector(domainCellGroup, {dof1}, [&](const CellIpData &cipd) {
           return pde.LoadVector(cipd, rightHandSide);
         });
 
-    GlobalDofVector boundaryloadVector = asmbl.BuildVector(
+    DofVector<double> boundaryloadVector = asmbl.BuildVector(
         neumannCellGroup, {dof1}, [&](const CellIpData &cipd) {
           return pde.NeumannLoadWithGivenGradient(cipd, gradSolution);
         });
@@ -150,24 +152,16 @@ public:
     //    Include Constraints
     // ***********************************
 
-    Eigen::SparseMatrix<double> cmat = constraints.BuildConstraintMatrix(
-        dof1, dofInfo.numIndependentDofs[dof1]);
+    Eigen::SparseMatrix<double> cmat =
+        constraints.BuildUnitConstraintMatrix(dof1, numDofs);
 
-    // Compute modified stiffness matrix
-    auto kJJ = stiffnessMx.JJ(dof1, dof1);
-    auto kJK = stiffnessMx.JK(dof1, dof1);
-    auto kKJ = stiffnessMx.KJ(dof1, dof1);
-    auto kKK = stiffnessMx.KK(dof1, dof1);
+    Eigen::SparseMatrix<double> stiffnessMxMod =
+        cmat.transpose() * stiffnessMx(dof1, dof1) * cmat;
 
-    Eigen::SparseMatrix<double> stiffnessMxMod = kJJ - cmat.transpose() * kKJ -
-                                                 kJK * cmat +
-                                                 cmat.transpose() * kKK * cmat;
     // Compute modified load vector
-    auto fJ = loadVector.J[dof1];
-    auto fK = loadVector.K[dof1];
-    auto b = constraints.GetRhs(dof1, 0);
-    Eigen::VectorXd loadVectorMod = fJ - cmat.transpose() * fK;
-    loadVectorMod -= (kJK * b - cmat.transpose() * kKK * b);
+    auto B = constraints.GetSparseGlobalRhs(dof1, numDofs, 0.);
+    Eigen::VectorXd loadVectorMod =
+        cmat.transpose() * (loadVector[dof1] - stiffnessMx(dof1, dof1) * B);
 
     // ***********************************
     //    Solve
@@ -183,13 +177,9 @@ public:
     if (solver.info() != Eigen::Success) {
       throw Exception("solve failed");
     }
-    // Compute Dependent Dofs
-    Eigen::VectorXd y = -cmat * result + b;
-
-    // StoreResult
-    Eigen::VectorXd femResult(result.size() + y.size());
-    femResult.head(result.size()) = result;
-    femResult.tail(y.size()) = y;
+    // Additionally compute dependent Dofs
+    Eigen::VectorXd femResult(numDofs);
+    femResult = cmat * result + B;
 
     // Merge
     for (auto &node : mesh.NodesTotal(dof1)) {

@@ -14,6 +14,8 @@
 
 #include "nuto/visualize/AverageHandler.h"
 #include "nuto/visualize/Visualizer.h"
+#include "nuto/visualize/VoronoiGeometries.h"
+#include "nuto/visualize/VoronoiHandler.h"
 
 #include "nuto/mechanics/constraints/ConstraintCompanion.h"
 #include "nuto/mechanics/constraints/Constraints.h"
@@ -43,7 +45,7 @@ int main(int argc, char *argv[]) {
   //      Geometry parameter
   // *********************************
 
-  MeshGmsh gmsh("Crack2D_1.msh");
+  MeshGmsh gmsh("Crack2D_2.msh");
   MeshFem &mesh = gmsh.GetMeshFEM();
   auto bottom = gmsh.GetPhysicalGroup("Bottom");
   auto left = gmsh.GetPhysicalGroup("Left");
@@ -56,12 +58,13 @@ int main(int argc, char *argv[]) {
 
   double tau = 0.2e-6;
   double stepSize = 0.006e-6;
-  int numSteps = 30000;
+  int numSteps = 3000;
 
   double E = 200.0e9;
   double nu = 0.3;
   double rho = 8000.;
-  Eigen::Vector2d crackLoad(-1., 0.);
+  // Eigen::Vector2d crackLoad(-1., 0.);
+  Eigen::Vector2d crackLoad(0., 1.);
 
   DofType dof1("Displacements", 2);
 
@@ -142,9 +145,20 @@ int main(int argc, char *argv[]) {
   // *********************************
 
   auto visualizeResult = [&](std::string filename) {
-    NuTo::Visualize::Visualizer visualize(domainCellGroup,
-                                          NuTo::Visualize::AverageHandler());
+    //    NuTo::Visualize::Visualizer visualize(domainCellGroup,
+    //                                          NuTo::Visualize::AverageHandler());
+    NuTo::Visualize::Visualizer visualize(
+        domainCellGroup,
+        NuTo::Visualize::VoronoiHandler(
+            Visualize::VoronoiGeometryQuad(4, Visualize::LOBATTO)));
     visualize.DofValues(dof1);
+    visualize.CellData(
+        [&](const CellIpData cipd) {
+          EngineeringStress<2> stress =
+              steel.Stress(cipd.Apply(dof1, Nabla::Strain()), 0., cipd.Ids());
+          return stress;
+        },
+        "stress");
     visualize.WriteVtuFile(filename + ".vtu");
   };
 
@@ -155,8 +169,7 @@ int main(int argc, char *argv[]) {
   NuTo::TimeIntegration::NY4NoVelocity<Eigen::VectorXd> ti;
   double t = 0.;
 
-  Eigen::VectorXd femResult(dofInfo.numIndependentDofs[dof1] +
-                            dofInfo.numDependentDofs[dof1]);
+  Eigen::VectorXd femResult(numDofs);
 
   // Set initial data
   Eigen::VectorXd w0(dofInfo.numIndependentDofs[dof1]);
@@ -192,10 +205,10 @@ int main(int argc, char *argv[]) {
         asmbl.BuildVector(crackCellGroup, {dof1}, [&](const CellIpData cipd) {
           return crackLoadFunc(cipd, t);
         });
-    Eigen::VectorXd loadVectorMod = cmat.transpose() * boundaryLoad[dof1];
     // Include constraints
     auto B = constraints.GetSparseGlobalRhs(dof1, numDofs, t);
-    loadVectorMod -= cmat.transpose() * stiffnessMx(dof1, dof1) * B;
+    Eigen::VectorXd loadVectorMod =
+        cmat.transpose() * (boundaryLoad[dof1] - stiffnessMx(dof1, dof1) * B);
 
     Eigen::VectorXd tmp = (-stiffnessMxMod * w + loadVectorMod);
     d2wdt2 = (tmp.array() / massMxMod.array()).matrix();
@@ -211,7 +224,7 @@ int main(int argc, char *argv[]) {
     std::cout << i + 1 << std::endl;
     if ((i * 100) % numSteps == 0) {
       MergeResult(femResult);
-      visualizeResult("Crack2DNormalLoad_" + std::to_string(plotcounter));
+      visualizeResult("Crack2DTangentialLoad_" + std::to_string(plotcounter));
       plotcounter++;
     }
   }

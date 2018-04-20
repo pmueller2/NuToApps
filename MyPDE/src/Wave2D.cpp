@@ -12,6 +12,7 @@
 #include "nuto/mechanics/constraints/Constraints.h"
 
 #include "../../MyTimeIntegration/RK4.h"
+#include "../../NuToHelpers/ConstraintsHelper.h"
 #include "../../NuToHelpers/MeshValuesTools.h"
 #include "../../NuToHelpers/PoissonTypeProblem.h"
 
@@ -41,7 +42,7 @@ int main(int argc, char *argv[]) {
   auto right = gmsh.GetPhysicalGroup("Right");
   auto domain = gmsh.GetPhysicalGroup("Domain");
 
-  auto dirichletBoundary = Intersection(top, bottom);
+  auto dirichletBoundary = right;
   auto neumannBoundary = bottom;
 
   // ***********************************
@@ -49,7 +50,8 @@ int main(int argc, char *argv[]) {
   // ***********************************
 
   double stepSize = 0.001;
-  int numSteps = 2;
+  double tau = 0.100;
+  int numSteps = 1000;
   int order = 1;
 
   // ***********************************
@@ -86,9 +88,37 @@ int main(int argc, char *argv[]) {
   // ******************************
 
   Constraint::Constraints constraints;
-  if (!dirichletBoundary.Empty()) {
-    throw Exception(__PRETTY_FUNCTION__, "Dirichlet boundary not implemented.");
+
+  std::vector<Constraint::Equation> equations;
+  std::set<NodeSimple *> nodes;
+
+  for (NuTo::ElementCollectionFem &elmColl : dirichletBoundary) {
+    NuTo::ElementFem &elmCoord = elmColl.CoordinateElement();
+    NuTo::ElementFem &elmDof = elmColl.DofElement(dof1);
+    for (int i = 0; i < elmDof.Interpolation().GetNumNodes(); i++) {
+      NodeSimple &nd = elmDof.GetNode(i);
+      // If this node was already used: continue with next one
+      if (nodes.find(&nd) != nodes.end())
+        continue;
+      nodes.insert(&nd);
+      Eigen::VectorXd coords =
+          Interpolate(elmCoord, elmDof.Interpolation().GetLocalCoords(i));
+      equations.push_back(Constraint::Value(nd, [tau, coords](double t3) {
+        double factor;
+        if ((coords(1) <= 0.4) || (coords(1) >= 0.6)) {
+          factor = 0.;
+        } else {
+          factor = 1.;
+        }
+        if (t3 >= tau) {
+          return 0.;
+        } else {
+          return factor * 0.5 * (1. - cos(2 * M_PI * t3 / tau));
+        }
+      }));
+    }
   }
+  constraints.Add(dof1, equations);
 
   // ******************************
   //      Set Initial Condition
@@ -105,7 +135,7 @@ int main(int argc, char *argv[]) {
     return 0.;
   };
 
-  Tools::SetValues(domain, dof1, initialData);
+  // Tools::SetValues(domain, dof1, initialData);
 
   // Velocities
   auto initialVelocities = [](Eigen::Vector2d coords) { return 0.; };
@@ -119,29 +149,38 @@ int main(int argc, char *argv[]) {
   DofInfo dofInfo =
       DofNumbering::Build(mesh.NodesTotal(dof1), dof1, constraints);
 
+  int numDofs =
+      dofInfo.numIndependentDofs[dof1] + dofInfo.numDependentDofs[dof1];
+
+  auto cmat = constraints.BuildUnitConstraintMatrix(dof1, numDofs);
+
   SimpleAssembler asmbl = SimpleAssembler(dofInfo);
 
   NuTo::Integrands::PoissonTypeProblem<2> pde(dof1);
 
-  GlobalDofVector diagonalMass = asmbl.BuildDiagonallyLumpedMatrix(
+  DofVector<double> diagonalMass = asmbl.BuildDiagonallyLumpedMatrix(
       domainCellGroup, {dof1},
       [&](const CellIpData &cipd) { return pde.MassMatrix(cipd); });
 
   // Here cmat stuff has to be added
-  Eigen::VectorXd diagonalMassMod = diagonalMass.J[dof1];
+  Eigen::VectorXd diagonalMassMod =
+      (cmat.transpose() * diagonalMass[dof1].asDiagonal() * cmat)
+          .eval()
+          .diagonal();
 
   // ***********************************
   //    Assemble stiffness matrix (should not be needed - better compute the
   //    gradient directly)
   // ***********************************
 
-  GlobalDofMatrixSparse stiffnessMx =
+  DofMatrixSparse<double> stiffnessMx =
       asmbl.BuildMatrix(domainCellGroup, {dof1}, [&](const CellIpData &cipd) {
         return pde.StiffnessMatrix(cipd);
       });
 
   // Here cmat stuff has to be added
-  Eigen::SparseMatrix<double> stiffnessMxMod = stiffnessMx.JJ(dof1, dof1);
+  Eigen::SparseMatrix<double> stiffnessMxMod =
+      cmat.transpose() * stiffnessMx(dof1, dof1) * cmat;
 
   // ************************************
   //   Set up equation system
@@ -149,8 +188,6 @@ int main(int argc, char *argv[]) {
 
   // Set up state vector
 
-  int numDofs =
-      dofInfo.numIndependentDofs[dof1] + dofInfo.numDependentDofs[dof1];
   Eigen::VectorXd values(numDofs);
   Eigen::VectorXd velocities(numDofs);
 
@@ -161,12 +198,21 @@ int main(int argc, char *argv[]) {
     velocities[dofNr] = node.GetValues(0)(0);
   }
 
+  // Get JK numbering
+  Eigen::VectorXi jknumbering =
+      Constraint::GetJKNumbering(constraints, dof1, numDofs);
+  Eigen::PermutationMatrix<Eigen::Dynamic> P(jknumbering);
+
+  // Reorder values
+  Eigen::VectorXd orderedvalues = P.transpose() * values;
+  Eigen::VectorXd orderedvelocities = P.transpose() * velocities;
+
   // Concatenate independent values and velocities
   Eigen::VectorXd state(dofInfo.numIndependentDofs[dof1] * 2);
   state.head(dofInfo.numIndependentDofs[dof1]) =
-      values.head(dofInfo.numIndependentDofs[dof1]);
+      orderedvalues.head(dofInfo.numIndependentDofs[dof1]);
   state.tail(dofInfo.numIndependentDofs[dof1]) =
-      velocities.head(dofInfo.numIndependentDofs[dof1]);
+      orderedvelocities.head(dofInfo.numIndependentDofs[dof1]);
 
   NuTo::TimeIntegration::RK4<Eigen::VectorXd> ti;
 
@@ -175,13 +221,9 @@ int main(int argc, char *argv[]) {
     Eigen::VectorXd valsJ = w.head(w.size() / 2);
     Eigen::VectorXd veloJ = w.tail(w.size() / 2);
     // compute dependent parts
-    Eigen::VectorXd valsK(dofInfo.numDependentDofs[dof1]);
-    Eigen::VectorXd veloK(dofInfo.numDependentDofs[dof1]);
-    // combine
-    Eigen::VectorXd vals(numDofs);
-    vals << valsJ, valsK;
-    Eigen::VectorXd velo(numDofs);
-    velo << veloJ, veloK;
+    Eigen::VectorXd vals =
+        cmat * valsJ + constraints.GetSparseGlobalRhs(dof1, numDofs, t);
+    Eigen::VectorXd velo = cmat * veloJ;
     // Merge
     for (auto &node : mesh.NodesTotal(dof1)) {
       int dofNr = node.GetDofNumber(0);
@@ -191,14 +233,17 @@ int main(int argc, char *argv[]) {
     // **************************
     // Compute
     // **************************
-    GlobalDofVector loadVector =
+    DofVector<double> loadVector =
         asmbl.BuildVector(domainCellGroup, {dof1}, [&](const CellIpData &cipd) {
           return pde.LoadVector(cipd,
                                 [](Eigen::Vector2d coords) { return 0.; });
         });
 
     Eigen::VectorXd tmp = (-stiffnessMxMod * valsJ);
-    tmp += loadVector.J[dof1];
+    tmp += cmat.transpose() *
+           (loadVector[dof1] -
+            stiffnessMx(dof1, dof1) *
+                constraints.GetSparseGlobalRhs(dof1, numDofs, t));
 
     dwdt.head(w.size() / 2) = veloJ;
     dwdt.tail(w.size() / 2) = (tmp.array() / diagonalMassMod.array()).matrix();
@@ -211,11 +256,13 @@ int main(int argc, char *argv[]) {
     visualize.WriteVtuFile(filename + ".vtu");
   };
 
+  std::cout << "Start time integration" << std::endl;
+
   int plotcounter = 1;
   for (int i = 0; i < numSteps; i++) {
     double t = i * stepSize;
-    state = ti.DoStep(eq, state, t, stepSize);
     std::cout << i + 1 << std::endl;
+    state = ti.DoStep(eq, state, t, stepSize);
     if ((i * 100) % numSteps == 0) {
       visualizeResult("Wave2Dlobatto1smooth_" + std::to_string(plotcounter));
       plotcounter++;

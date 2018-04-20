@@ -30,6 +30,7 @@ link_directories("${CMAKE_CURRENT_BINARY_DIR}/lib")
 
 foreach(myFile
     ElasticityCrackOpening2D
+    Wave1D
     mytest
    )
 ADD_EXECUTABLE(${myFile} ${myFile}.cpp)
