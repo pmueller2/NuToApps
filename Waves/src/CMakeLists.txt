@@ -2,9 +2,13 @@ project(Waves)
 cmake_minimum_required(VERSION 3.9)
 set(CMAKE_CXX_STANDARD 14)
 
+set(CMAKE_LIBRARY_ARCHITECTURE "x86_64-linux-gnu")
+
 find_path(EIGEN_INCLUDE_DIR NAMES Eigen/Core PATH_SUFFIXES eigen3)
 include_directories(${EIGEN_INCLUDE_DIR})
 include_directories("nuto")
+
+find_package(Boost COMPONENTS filesystem REQUIRED)
 
 include(ExternalProject)
 
@@ -35,6 +39,6 @@ foreach(myFile
    )
 ADD_EXECUTABLE(${myFile} ${myFile}.cpp)
 add_dependencies(${myFile} nuto)
-TARGET_LINK_LIBRARIES(${myFile} NuTo ${Boost_LIBRARIES} ${LAPACK_LIBRARIES} ${ARPACK_LIBRARY})
+TARGET_LINK_LIBRARIES(${myFile} NuTo ${Boost_LIBRARIES} ${LAPACK_LIBRARIES} ${ARPACK_LIBRARY} boost_filesystem)
 endforeach(myFile)
 

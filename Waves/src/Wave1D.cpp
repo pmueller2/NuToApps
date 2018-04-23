@@ -12,6 +12,8 @@
 #include "nuto/visualize/Visualizer.h"
 #include "nuto/visualize/VoronoiGeometries.h"
 
+#include "boost/filesystem.hpp"
+
 #include <iostream>
 
 using namespace NuTo;
@@ -25,6 +27,28 @@ int main(int argc, char *argv[]) {
   int numSteps = 1000;
   double stepSize = 0.001;
   double tau = 0.100;
+
+  std::string resultDirectory = "/Wave1D/";
+  bool overwriteResultDirectory = true;
+
+  // delete result directory if it exists and create it new
+  boost::filesystem::path rootPath = boost::filesystem::initial_path();
+  boost::filesystem::path resultDirectoryFull = rootPath.parent_path()
+                                                    .parent_path()
+                                                    .append("/results")
+                                                    .append(resultDirectory);
+
+  if (boost::filesystem::exists(resultDirectoryFull)) // does p actually exist?
+  {
+    if (boost::filesystem::is_directory(resultDirectoryFull)) {
+      if (overwriteResultDirectory) {
+        boost::filesystem::remove_all(resultDirectoryFull);
+        boost::filesystem::create_directory(resultDirectoryFull);
+      }
+    }
+  } else {
+    boost::filesystem::create_directory(resultDirectoryFull);
+  }
 
   // **************************************
   // Mesh, Dofs, Interpolation, Numbering
@@ -65,19 +89,20 @@ int main(int argc, char *argv[]) {
   // ******************************
 
   Constraint::Constraints constraints;
-  //  constraints.Add(dof, Constraint::Equation(leftDofNode, 0, [tau](double t)
-  //  {
-  //                    if ((0 < t) && (t < tau)) {
-  //                      return 0.5 * (1. - cos(2 * M_PI * t / tau));
-  //                    }
-  //                    return 0.;
-  //                  }));
-  //  constraints.Add(
-  //      dof, Constraint::Equation(rightDofNode, 0, [](double t) { return 0.;
-  //      }));
-  Constraint::Equation periodic(leftDofNode, 0, [](double t) { return 0.; });
-  periodic.AddIndependentTerm(Constraint::Term(rightDofNode, 0, 1));
-  constraints.Add(dof, periodic);
+
+  constraints.Add(dof, Constraint::Equation(leftDofNode, 0, [tau](double t) {
+                    if ((0 < t) && (t < tau)) {
+                      return 0.5 * (1. - cos(2 * M_PI * t / tau));
+                    }
+                    return 0.;
+                  }));
+  constraints.Add(
+      dof, Constraint::Equation(rightDofNode, 0, [](double t) { return 0.; }));
+
+  //  Constraint::Equation periodic(leftDofNode, 0, [](double t) { return 0.;
+  //  });
+  //  periodic.AddIndependentTerm(Constraint::Term(rightDofNode, 0, -1));
+  //  constraints.Add(dof, periodic);
 
   int numDofsK = constraints.GetNumEquations(dof);
   int numDofsJ = numDofs - numDofsK;
@@ -108,6 +133,9 @@ int main(int argc, char *argv[]) {
   Eigen::VectorXd massMxModInv2 =
       ((cmat * massMxMod.asDiagonal().inverse() * cmat.transpose()).eval())
           .diagonal();
+
+  Eigen::SparseMatrix<double> massMxModInv2Full =
+      cmat * massMxMod.asDiagonal().inverse() * cmat.transpose();
 
   Eigen::VectorXd lumpedMassMxInv =
       lumpedMassMx.asDiagonal().inverse().diagonal();
@@ -144,8 +172,9 @@ int main(int argc, char *argv[]) {
     }
     Eigen::VectorXd rhsFull =
         asmbl.BuildVector(domainCellGroup, {dof}, rightHandSide)[dof];
-    dwdt.head(numDofs) = w.tail(numDofs);
-    dwdt.tail(numDofs) = (rhsFull.array() * massMxModInv2.array()).matrix();
+    dwdt.head(numDofs) = velo;
+    Eigen::VectorXd dwdtJK = massMxModInv2Full * rhsFull;
+    dwdt.tail(numDofs) = dwdtJK;
   };
 
   // ******************************
@@ -162,11 +191,13 @@ int main(int argc, char *argv[]) {
     return 0.;
   };
 
-  auto cosineBumpDerivative = [](double x) {
+  double speed = -1.;
+
+  auto cosineBumpDerivative = [speed](double x) {
     double a = 0.3;
     double b = 0.7;
     if ((a < x) && (x < b)) {
-      return M_PI / (b - a) * sin(2 * M_PI * (x - a) / (b - a));
+      return speed * M_PI / (b - a) * sin(2 * M_PI * (x - a) / (b - a));
     }
     return 0.;
   };
@@ -174,8 +205,8 @@ int main(int argc, char *argv[]) {
   // Velocities
   auto zeroFunc = [](double x) { return 0.; };
 
-  Tools::SetValues(domain, dof, cosineBump, 0);
-  Tools::SetValues(domain, dof, cosineBumpDerivative, 1);
+  Tools::SetValues(domain, dof, zeroFunc, 0);
+  Tools::SetValues(domain, dof, zeroFunc, 1);
 
   // *********************************
   //      Visualize
@@ -211,7 +242,8 @@ int main(int argc, char *argv[]) {
     state = ti.DoStep(ODESystem1stOrder, state, t, stepSize);
     std::cout << i + 1 << std::endl;
     if ((i * 100) % numSteps == 0) {
-      visualizeResult("Wave1D_" + std::to_string(plotcounter));
+      visualizeResult(resultDirectoryFull.string() + std::string("Wave1D_") +
+                      std::to_string(plotcounter));
       plotcounter++;
     }
   }
