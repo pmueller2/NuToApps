@@ -47,11 +47,11 @@ foreach(myFile
     #InterpolationHierarchical
     #Interpolation1DTests
     #InterpolationTrigonometricTest
-    #LocalCoordinatesFromGlobal
+    LocalCoordinatesFromGlobal
     Poisson2D
     #PiezoelectricDisk
     #SimplexShapes
-    Wave1DTests
+    #Wave1DTests
     Wave2D
     #WaveLine
    )

@@ -2,6 +2,7 @@
 #include "nuto/mechanics/mesh/MeshGmsh.h"
 
 #include "nuto/mechanics/integrationtypes/IntegrationCompanion.h"
+#include "nuto/mechanics/interpolation/InterpolationBrickLobatto.h"
 #include "nuto/mechanics/interpolation/InterpolationQuadLobatto.h"
 
 #include "nuto/mechanics/constitutive/LinearElastic.h"
@@ -22,9 +23,6 @@
 
 #include "../../MyTimeIntegration/NY4NoVelocity.h"
 #include "../../NuToHelpers/ConstraintsHelper.h"
-#include "../../NuToHelpers/MeshValuesTools.h"
-
-#include "boost/filesystem.hpp"
 
 #include <iostream>
 
@@ -39,8 +37,8 @@ double smearedStepFunction(double t, double tau) {
   return 0.5 * (1. - cos(ot));
 }
 
-/* Rectangular domain, linear isotropic homogeneous elasticity
- * Crack opening
+/* Rectangular Plate, linear isotropic homogeneous elasticity
+ * Circular crack opening.
  */
 int main(int argc, char *argv[]) {
 
@@ -48,56 +46,15 @@ int main(int argc, char *argv[]) {
   //      Geometry parameter
   // *********************************
 
-  MeshGmsh gmsh("Crack2D_2.msh");
+  MeshGmsh gmsh("Crack3D_angle00_h1_2ndOrder.msh");
   MeshFem &mesh = gmsh.GetMeshFEM();
-  auto bottom = gmsh.GetPhysicalGroup("Bottom");
-  auto left = gmsh.GetPhysicalGroup("Left");
-  auto crack = gmsh.GetPhysicalGroup("Crack");
   auto domain = gmsh.GetPhysicalGroup("Domain");
+  auto backCrackFace = gmsh.GetPhysicalGroup("BackCrackFace");
+  auto frontCrackFace = gmsh.GetPhysicalGroup("FrontCrackFace");
+  auto crackBoundary = Unite(frontCrackFace, backCrackFace);
 
-  // **************************************
-  // Result directory, filesystem
-  // **************************************
-
-  std::string resultDirectory = "/ElasticWaves2D/";
-  bool overwriteResultDirectory = true;
-
-  // delete result directory if it exists and create it new
-  boost::filesystem::path rootPath = boost::filesystem::initial_path();
-  boost::filesystem::path resultDirectoryFull = rootPath.parent_path()
-                                                    .parent_path()
-                                                    .append("/results")
-                                                    .append(resultDirectory);
-
-  if (boost::filesystem::exists(resultDirectoryFull)) // does p actually exist?
-  {
-    if (boost::filesystem::is_directory(resultDirectoryFull)) {
-      if (overwriteResultDirectory) {
-        boost::filesystem::remove_all(resultDirectoryFull);
-        boost::filesystem::create_directory(resultDirectoryFull);
-      }
-    }
-  } else {
-    boost::filesystem::create_directory(resultDirectoryFull);
-  }
-
-  // **************************************
-  // OutputNodes/OutputData
-  // **************************************
-
-  // Set up a list of output coordinates
-  double outRadius = 0.5;
-  int numAngles = 10;
-
-  Eigen::MatrixXd outputCoords(numAngles, 2);
-
-  for (int i = 0; i < numAngles; i++) {
-    double phi = i * M_PI / 2 / (numAngles - 1);
-    outputCoords(i, 0) = outRadius * cos(phi);
-    outputCoords(i, 1) = outRadius * sin(phi);
-  }
-
-  Tools::Interpolator myInterpolator(outputCoords, domain, mesh);
+  // The normals produced by tethex are completely wrong
+  // Check with Gmsh and the manually change signs
 
   // ***********************************
   //    Dofs, Interpolation
@@ -105,23 +62,34 @@ int main(int argc, char *argv[]) {
 
   double tau = 0.2e-6;
   double stepSize = 0.006e-6;
-  int numSteps = 2;
+  int numSteps = 100000;
 
   double E = 200.0e9;
   double nu = 0.3;
   double rho = 8000.;
 
-  Eigen::Vector2d crackLoad(1., 0.);
+  double crackAngle = 0.0 * M_PI;
+  double crackRadius = 0.2;
 
-  DofType dof1("Displacements", 2);
+  double crackArea = M_PI * crackRadius * crackRadius;
+  double loadPressureMagnitude = 1. / crackArea;
 
-  Laws::LinearElastic<2> steel(E, nu); // 2D default: plane stress
-  Integrands::DynamicMomentumBalance<2> pde(dof1, steel, rho);
+  // Load on Front crack face
+  Eigen::Vector3d crackLoad(0., -sin(crackAngle), cos(crackAngle));
+  crackLoad *= loadPressureMagnitude;
 
-  int order = 3;
-  auto &ipol = mesh.CreateInterpolation(InterpolationQuadLobatto(order));
-  AddDofInterpolation(&mesh, dof1, ipol);
-  mesh.AllocateDofInstances(dof1, 2);
+  DofType dof1("Displacements", 3);
+
+  Laws::LinearElastic<3> steel(E, nu);
+  Integrands::DynamicMomentumBalance<3> pde(dof1, steel, rho);
+
+  int order = 2;
+
+  auto &ipol3D = mesh.CreateInterpolation(InterpolationBrickLobatto(order));
+  AddDofInterpolation(&mesh, dof1, domain, ipol3D);
+
+  auto &ipol2D = mesh.CreateInterpolation(InterpolationQuadLobatto(order));
+  AddDofInterpolation(&mesh, dof1, crackBoundary, ipol2D);
 
   // ***********************************
   //    Set up integration, add cells
@@ -137,33 +105,32 @@ int main(int argc, char *argv[]) {
 
   // Boundary cells
   auto boundaryIntType = CreateLobattoIntegrationType(
-      crack.begin()->DofElement(dof1).GetShape(), integrationOrder);
-  CellStorage crackCells;
-  auto crackCellGroup = crackCells.AddCells(crack, *boundaryIntType);
+      crackBoundary.begin()->DofElement(dof1).GetShape(), integrationOrder);
+  CellStorage crackCellsFront;
+  auto crackCellGroupFront =
+      crackCellsFront.AddCells(frontCrackFace, *boundaryIntType);
 
-  // ******************************
-  //      Set Dirichlet boundary
-  // ******************************
+  CellStorage crackCellsBack;
+  auto crackCellGroupBack =
+      crackCellsBack.AddCells(backCrackFace, *boundaryIntType);
 
-  Group<NodeSimple> bottomNodes = GetNodes(bottom, dof1);
-  Group<NodeSimple> leftNodes = GetNodes(left, dof1);
+  // *********************************************
+  //      No Dirichlet boundary, Numbering
+  // *********************************************
 
   Constraint::Constraints constraints;
-  constraints.Add(dof1, Constraint::Component(bottomNodes, {eDirection::Y}));
-  constraints.Add(dof1, Constraint::Component(leftNodes, {eDirection::X}));
+
+  DofInfo dofInfo =
+      DofNumbering::Build(mesh.NodesTotal(dof1), dof1, constraints);
 
   // ************************************
   //   Assemble constant mass matrix
   // ************************************
 
-  DofInfo dofInfo =
-      DofNumbering::Build(mesh.NodesTotal(dof1), dof1, constraints);
-
   int numDofs =
       dofInfo.numIndependentDofs[dof1] + dofInfo.numDependentDofs[dof1];
 
-  Eigen::SparseMatrix<double> cmat =
-      constraints.BuildUnitConstraintMatrix(dof1, numDofs);
+  std::cout << "NumDofs: " << numDofs << std::endl;
 
   SimpleAssembler asmbl = SimpleAssembler(dofInfo);
 
@@ -171,9 +138,7 @@ int main(int argc, char *argv[]) {
       domainCellGroup, {dof1},
       [&](const CellIpData &cipd) { return pde.Hessian2(cipd); });
 
-  Eigen::SparseMatrix<double> massMxModFull =
-      cmat.transpose() * lumpedMassMx[dof1].asDiagonal() * cmat;
-  Eigen::VectorXd massMxMod = massMxModFull.diagonal();
+  Eigen::VectorXd massMxMod = lumpedMassMx[dof1];
 
   // ***********************************
   //    Assemble stiffness matrix
@@ -184,24 +149,21 @@ int main(int argc, char *argv[]) {
         return pde.Hessian0(cipd, 0.);
       });
 
-  Eigen::SparseMatrix<double> stiffnessMxMod =
-      cmat.transpose() * stiffnessMx(dof1, dof1) * cmat;
+  Eigen::SparseMatrix<double> stiffnessMxMod = stiffnessMx(dof1, dof1);
 
   // *********************************
   //      Visualize
   // *********************************
 
   auto visualizeResult = [&](std::string filename) {
-    //    NuTo::Visualize::Visualizer visualize(domainCellGroup,
-    //                                          NuTo::Visualize::AverageHandler());
     NuTo::Visualize::Visualizer visualize(
         domainCellGroup,
-        NuTo::Visualize::VoronoiHandler(Visualize::VoronoiGeometryQuad(
+        NuTo::Visualize::VoronoiHandler(Visualize::VoronoiGeometryBrick(
             integrationOrder, Visualize::LOBATTO)));
     visualize.DofValues(dof1);
     visualize.CellData(
         [&](const CellIpData cipd) {
-          EngineeringStress<2> stress =
+          EngineeringStress<3> stress =
               steel.Stress(cipd.Apply(dof1, Nabla::Strain()), 0., cipd.Ids());
           return stress;
         },
@@ -215,8 +177,6 @@ int main(int argc, char *argv[]) {
 
   NuTo::TimeIntegration::NY4NoVelocity<Eigen::VectorXd> ti;
   double t = 0.;
-
-  Eigen::VectorXd femResult(numDofs);
 
   // Set initial data
   Eigen::VectorXd w0(dofInfo.numIndependentDofs[dof1]);
@@ -240,24 +200,27 @@ int main(int argc, char *argv[]) {
     Eigen::MatrixXd N = cipd.N(dof1);
     DofVector<double> loadLocal;
 
-    Eigen::Vector2d normalTraction = crackLoad * smearedStepFunction(tt, tau);
+    Eigen::Vector3d normalTraction = crackLoad * smearedStepFunction(tt, tau);
 
     loadLocal[dof1] = N.transpose() * normalTraction;
     return loadLocal;
   };
 
-  auto eq = [&](const Eigen::VectorXd &w, Eigen::VectorXd &d2wdt2, double t) {
-    // Compute load
-    DofVector<double> boundaryLoad =
-        asmbl.BuildVector(crackCellGroup, {dof1}, [&](const CellIpData cipd) {
-          return crackLoadFunc(cipd, t);
-        });
-    // Include constraints
-    auto B = constraints.GetSparseGlobalRhs(dof1, numDofs, t);
-    Eigen::VectorXd loadVectorMod =
-        cmat.transpose() * (boundaryLoad[dof1] - stiffnessMx(dof1, dof1) * B);
+  // Compute load
+  DofVector<double> boundaryLoadFront = asmbl.BuildVector(
+      crackCellGroupFront, {dof1},
+      [&](const CellIpData cipd) { return crackLoadFunc(cipd, tau * 2); });
+  DofVector<double> boundaryLoadBack =
+      asmbl.BuildVector(crackCellGroupBack, {dof1}, [&](const CellIpData cipd) {
+        return crackLoadFunc(cipd, tau * 2);
+      });
+  Eigen::VectorXd loadVectorMod =
+      boundaryLoadFront[dof1] - boundaryLoadBack[dof1];
 
-    Eigen::VectorXd tmp = (-stiffnessMxMod * w + loadVectorMod);
+  auto eq = [&](const Eigen::VectorXd &w, Eigen::VectorXd &d2wdt2, double t) {
+
+    Eigen::VectorXd tmp =
+        (-stiffnessMxMod * w + loadVectorMod * smearedStepFunction(t, tau));
     d2wdt2 = (tmp.array() / massMxMod.array()).matrix();
   };
 
@@ -265,17 +228,10 @@ int main(int argc, char *argv[]) {
   for (int i = 0; i < numSteps; i++) {
     t = i * stepSize;
     state = ti.DoStep(eq, state.first, state.second, t, stepSize);
-    femResult =
-        cmat * state.first +
-        constraints.GetSparseGlobalRhs(dof1, numDofs, (i + 1) * stepSize);
-    // output test
-    for (int i = 0; i < outputCoords.rows(); i++) {
-      std::cout << myInterpolator.GetValue(i, dof1) << std::endl;
-    }
     std::cout << i + 1 << std::endl;
     if ((i * 100) % numSteps == 0) {
-      MergeResult(femResult);
-      visualizeResult(resultDirectoryFull.string() + "Crack2DNormalLoad_" +
+      MergeResult(state.first);
+      visualizeResult("Crack3D_angle00_h1_NormalLoad2ndOrder" +
                       std::to_string(plotcounter));
       plotcounter++;
     }

@@ -1,4 +1,5 @@
 #include "../../MyTimeIntegration/RK4.h"
+#include "../../NuToHelpers/BoostOdeintEigenSupport.h"
 #include "../../NuToHelpers/ConstraintsHelper.h"
 #include "../../NuToHelpers/MeshValuesTools.h"
 #include "nuto/mechanics/cell/CellIpData.h"
@@ -13,6 +14,7 @@
 #include "nuto/visualize/VoronoiGeometries.h"
 
 #include "boost/filesystem.hpp"
+#include "boost/numeric/odeint/stepper/runge_kutta4.hpp"
 
 #include <iostream>
 
@@ -26,7 +28,11 @@ int main(int argc, char *argv[]) {
 
   int numSteps = 1000;
   double stepSize = 0.001;
-  double tau = 0.100;
+  double tau = 0.500;
+
+  // **************************************
+  // Result directory, filesystem
+  // **************************************
 
   std::string resultDirectory = "/Wave1D/";
   bool overwriteResultDirectory = true;
@@ -163,7 +169,7 @@ int main(int argc, char *argv[]) {
     // Update constrained dofs
     auto B = constraints.GetSparseGlobalRhs(dof, numDofs, t);
     Eigen::VectorXd vals = cmat * valsJ + B;
-    Eigen::VectorXd velo = cmat * veloJ;
+    Eigen::VectorXd velo = cmat * veloJ; // Here is actually a dot(B) missing
     // Node Merge
     for (auto &nd : dofNodes) {
       int dofNr = nd.GetDofNumber(0);
@@ -235,11 +241,20 @@ int main(int argc, char *argv[]) {
 
   TimeIntegration::RK4<Eigen::VectorXd> ti;
 
+  //  boost::numeric::odeint::runge_kutta4<
+  //      Eigen::VectorXd, double, Eigen::VectorXd, double,
+  //      boost::numeric::odeint::vector_space_algebra>
+  //      stepper;
+
   double t = 0.;
   int plotcounter = 1;
   for (int i = 0; i < numSteps; i++) {
     t = i * stepSize;
     state = ti.DoStep(ODESystem1stOrder, state, t, stepSize);
+
+    // For odeint constant steppers:
+    // stepper.do_step(ODESystem1stOrder, state, t, stepSize);
+
     std::cout << i + 1 << std::endl;
     if ((i * 100) % numSteps == 0) {
       visualizeResult(resultDirectoryFull.string() + std::string("Wave1D_") +
