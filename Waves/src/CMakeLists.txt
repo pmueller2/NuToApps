@@ -6,7 +6,7 @@ set(CMAKE_LIBRARY_ARCHITECTURE "x86_64-linux-gnu")
 
 find_path(EIGEN_INCLUDE_DIR NAMES Eigen/Core PATH_SUFFIXES eigen3)
 include_directories(${EIGEN_INCLUDE_DIR})
-include_directories("nuto")
+include_directories("include")
 
 find_package(Boost COMPONENTS filesystem REQUIRED)
 
@@ -39,7 +39,6 @@ foreach(inputFile
 
 endforeach()
 
-include_directories(${PROJECT_SOURCE_DIR}/../../NuTo)
 link_directories("${CMAKE_CURRENT_BINARY_DIR}/lib")
 
 foreach(myFile

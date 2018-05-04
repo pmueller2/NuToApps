@@ -51,6 +51,13 @@ public:
         return result;
     }
 
+    //! @brief An alias for the above corresponding to boost_odeint naming
+    template <typename F>
+    void do_step(F f, Tstate& w0, double t0, double h)
+    {
+        w0 = DoStep(f,w0,t0,h);
+    }
+
 protected:
     std::vector<std::vector<double>> a;
     std::vector<double> b;

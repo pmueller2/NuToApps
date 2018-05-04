@@ -1,7 +1,6 @@
 #include "../../MyTimeIntegration/RK4.h"
 #include "../../NuToHelpers/BoostOdeintEigenSupport.h"
 #include "../../NuToHelpers/ConstraintsHelper.h"
-#include "../../NuToHelpers/MeshValuesTools.h"
 #include "nuto/mechanics/cell/CellIpData.h"
 #include "nuto/mechanics/cell/SimpleAssembler.h"
 #include "nuto/mechanics/constraints/Constraints.h"
@@ -20,174 +19,186 @@
 
 using namespace NuTo;
 
-int main(int argc, char *argv[]) {
+class Wave1D {
+public:
+  Wave1D(int numElements, int order)
+      : mMesh(UnitMeshFem::CreateLines(numElements)), mOrder(order),
+        mDof("Displacement", 1),
+        mIntegrationType(mOrder + 1, eIntegrationMethod::GAUSS) {
 
-  int numElms = 100;
-  int interpolationOrder = 3;
-  int numIPs = interpolationOrder + 1;
+    AddDofInterpolation(
+        &mMesh, mDof,
+        mMesh.CreateInterpolation(InterpolationTrussLobatto(order)));
 
-  int numSteps = 1000;
-  double stepSize = 0.001;
-  double tau = 0.500;
+    mMesh.AllocateDofInstances(mDof, 2);
+    mDomain = mMesh.ElementsTotal();
+    mDofNodes = mMesh.NodesTotal(mDof);
+    mCellGroup = mCells.AddCells(mDomain, mIntegrationType);
 
-  // **************************************
-  // Result directory, filesystem
-  // **************************************
+    std::string resultDirectory = "/Wave1D/";
+    bool overwriteResultDirectory = true;
 
-  std::string resultDirectory = "/Wave1D/";
-  bool overwriteResultDirectory = true;
+    boost::filesystem::path rootPath = boost::filesystem::initial_path();
+    mResultDirectoryFull = rootPath.append(resultDirectory);
+    if (boost::filesystem::exists(
+            mResultDirectoryFull)) // does p actually exist?
+    {
+      if (boost::filesystem::is_directory(mResultDirectoryFull)) {
+        if (overwriteResultDirectory) {
+          boost::filesystem::remove_all(mResultDirectoryFull);
+          boost::filesystem::create_directory(mResultDirectoryFull);
+        }
+      }
+    } else {
+      boost::filesystem::create_directory(mResultDirectoryFull);
+    }
+  }
 
-  // delete result directory if it exists and create it new
-  boost::filesystem::path rootPath = boost::filesystem::initial_path();
-  boost::filesystem::path resultDirectoryFull = rootPath.parent_path()
-                                                    .parent_path()
-                                                    .append("/results")
-                                                    .append(resultDirectory);
-
-  if (boost::filesystem::exists(resultDirectoryFull)) // does p actually exist?
-  {
-    if (boost::filesystem::is_directory(resultDirectoryFull)) {
-      if (overwriteResultDirectory) {
-        boost::filesystem::remove_all(resultDirectoryFull);
-        boost::filesystem::create_directory(resultDirectoryFull);
+  void SetValues(std::function<double(double)> func, int instance = 0) {
+    for (NuTo::ElementCollectionFem &elmColl : mDomain) {
+      NuTo::ElementFem &elmCoord = elmColl.CoordinateElement();
+      NuTo::ElementFem &elmDof = elmColl.DofElement(mDof);
+      for (int i = 0; i < elmDof.Interpolation().GetNumNodes(); i++) {
+        elmDof.GetNode(i).SetValue(
+            0, func(Interpolate(elmCoord,
+                                elmDof.Interpolation().GetLocalCoords(i))[0]),
+            instance);
       }
     }
-  } else {
-    boost::filesystem::create_directory(resultDirectoryFull);
   }
 
-  // **************************************
-  // Mesh, Dofs, Interpolation, Numbering
-  // **************************************
-
-  MeshFem mesh = UnitMeshFem::CreateLines(numElms);
-  DofType dof("scalar", 1);
-  InterpolationTrussLobatto ipol(interpolationOrder);
-  AddDofInterpolation(&mesh, dof, mesh.CreateInterpolation(ipol));
-  mesh.AllocateDofInstances(dof, 2);
-  auto domain = mesh.ElementsTotal();
-  auto dofNodes = mesh.NodesTotal(dof);
-
-  NodeSimple &leftDofNode =
-      mesh.NodeAtCoordinate(Eigen::VectorXd::Constant(1, 0.), dof);
-  NodeSimple &rightDofNode =
-      mesh.NodeAtCoordinate(Eigen::VectorXd::Constant(1, 1.), dof);
-
-  int numDofs = dofNodes.Size();
-
-  int counter = 0;
-  for (auto &nd : dofNodes) {
-    nd.SetDofNumber(0, counter);
-    counter++;
+  void SetDirichletBoundaryLeft(std::function<double(double)> func) {
+    NodeSimple &leftDofNode =
+        mMesh.NodeAtCoordinate(Eigen::VectorXd::Constant(1, 0.), mDof);
+    mConstraints.Add(mDof, Constraint::Value(leftDofNode, func));
   }
 
-  // ***********************************
-  //    Set up integration, add cells
-  // ***********************************
+  void SetDirichletBoundaryRight(std::function<double(double)> func) {
+    NodeSimple &rightDofNode =
+        mMesh.NodeAtCoordinate(Eigen::VectorXd::Constant(1, 1.), mDof);
+    mConstraints.Add(mDof, Constraint::Value(rightDofNode, func));
+  }
 
-  IntegrationTypeTensorProduct<1> integrationType(numIPs,
-                                                  eIntegrationMethod::LOBATTO);
-  CellStorage domainCells;
-  auto domainCellGroup = domainCells.AddCells(domain, integrationType);
+  void Solve(int numSteps, double stepSize) {
 
-  // ******************************
-  //      Set Dirichlet boundary
-  // ******************************
+    DofInfo dofInfo = DofNumbering::Build(mDofNodes, mDof, mConstraints);
+    int numDofsJ = dofInfo.numIndependentDofs[mDof];
+    int numDofsK = dofInfo.numDependentDofs[mDof];
+    int numDofs = numDofsJ + numDofsK;
+    auto cmat = mConstraints.BuildUnitConstraintMatrix(mDof, numDofs);
+    Eigen::PermutationMatrix<Eigen::Dynamic> JKtoGlobal(
+        Constraint::GetJKNumbering(mConstraints, mDof, numDofs));
+    Eigen::PermutationMatrix<Eigen::Dynamic> GlobalToJK = JKtoGlobal.inverse();
 
-  Constraint::Constraints constraints;
+    SimpleAssembler asmbl = SimpleAssembler(dofInfo);
 
-  constraints.Add(dof, Constraint::Equation(leftDofNode, 0, [tau](double t) {
-                    if ((0 < t) && (t < tau)) {
-                      return 0.5 * (1. - cos(2 * M_PI * t / tau));
-                    }
-                    return 0.;
-                  }));
-  constraints.Add(
-      dof, Constraint::Equation(rightDofNode, 0, [](double t) { return 0.; }));
+    // Compute mass matrix
+    Eigen::VectorXd lumpedMassMx = asmbl.BuildDiagonallyLumpedMatrix(
+        mCellGroup, {mDof}, [&](const CellIpData &cipd) {
+          Eigen::MatrixXd N = cipd.N(mDof);
+          DofMatrix<double> massLocal;
+          massLocal(mDof, mDof) = N.transpose() * N;
+          return massLocal;
+        })[mDof];
 
-  //  Constraint::Equation periodic(leftDofNode, 0, [](double t) { return 0.;
-  //  });
-  //  periodic.AddIndependentTerm(Constraint::Term(rightDofNode, 0, -1));
-  //  constraints.Add(dof, periodic);
+    // Compute inverse modified mass matrix
+    // (this will not work for arbitrary cmat since then the modified mass is in
+    // general not diagonal)
+    Eigen::VectorXd modMass =
+        (cmat.transpose() * lumpedMassMx.asDiagonal() * cmat).eval().diagonal();
 
-  int numDofsK = constraints.GetNumEquations(dof);
-  int numDofsJ = numDofs - numDofsK;
-  DofInfo dofInfo;
-  dofInfo.numIndependentDofs[dof] = numDofsJ;
-  dofInfo.numDependentDofs[dof] = numDofsK;
+    // Define gradient function
+    auto rightHandSide = [&](const CellIpData &cipd) {
+      Eigen::MatrixXd B = cipd.B(mDof, Nabla::Gradient());
+      DofVector<double> result;
+      result[mDof] = -B.transpose() * B * cipd.NodeValueVector(mDof);
+      return result;
+    };
 
-  auto cmat = constraints.BuildUnitConstraintMatrix(dof, numDofs);
-  Eigen::PermutationMatrix<Eigen::Dynamic> P(
-      Constraint::GetJKNumbering(constraints, dof, numDofs));
+    // Set up equation system
 
-  // ******************************
-  //    Compute Mass Matrix
-  // ******************************
+    auto ODESystem1stOrder = [&](const Eigen::VectorXd &w,
+                                 Eigen::VectorXd &dwdt, double t) {
+      // unpack independent velocities and values
+      Eigen::VectorXd valsJ = w.head(numDofsJ);
+      Eigen::VectorXd veloJ = w.tail(numDofsJ);
+      // Update constrained dofs, get all velocities and values
+      auto B = mConstraints.GetSparseGlobalRhs(mDof, numDofs, t);
+      Eigen::VectorXd vals = cmat * valsJ + B;
+      // Below is actually a dot(B) type thing missing
+      Eigen::VectorXd velo = cmat * veloJ;
+      // Node Merge
+      for (NodeSimple &nd : mDofNodes) {
+        int dofNr = nd.GetDofNumber(0);
+        nd.SetValue(0, vals[dofNr], 0);
+        nd.SetValue(0, velo[dofNr], 1);
+      }
+      Eigen::VectorXd rhsFull =
+          cmat.transpose() *
+          asmbl.BuildVector(mCellGroup, {mDof}, rightHandSide)[mDof];
+      dwdt.head(numDofsJ) = veloJ;
+      dwdt.tail(numDofsJ) = rhsFull.cwiseQuotient(modMass);
+    };
 
-  SimpleAssembler asmbl = SimpleAssembler(dofInfo);
-
-  Eigen::MatrixXd lumpedMassMx = asmbl.BuildDiagonallyLumpedMatrix(
-      domainCellGroup, {dof}, [dof](const CellIpData &cipd) {
-        Eigen::MatrixXd N = cipd.N(dof);
-        DofMatrix<double> massLocal;
-        massLocal(dof, dof) = N.transpose() * N;
-        return massLocal;
-      })[dof];
-
-  Eigen::VectorXd massMxMod =
-      (cmat.transpose() * lumpedMassMx.asDiagonal() * cmat).eval().diagonal();
-  Eigen::VectorXd massMxModInv2 =
-      ((cmat * massMxMod.asDiagonal().inverse() * cmat.transpose()).eval())
-          .diagonal();
-
-  Eigen::SparseMatrix<double> massMxModInv2Full =
-      cmat * massMxMod.asDiagonal().inverse() * cmat.transpose();
-
-  Eigen::VectorXd lumpedMassMxInv =
-      lumpedMassMx.asDiagonal().inverse().diagonal();
-
-  // ******************************
-  //    Define right hand side
-  // ******************************
-
-  auto rightHandSide = [dof](const CellIpData &cipd) {
-    Eigen::MatrixXd B = cipd.B(dof, Nabla::Gradient());
-    DofVector<double> result;
-    result[dof] = -B.transpose() * B * cipd.NodeValueVector(dof);
-    return result;
-  };
-
-  // ******************************
-  //    Set up equation system
-  // ******************************
-
-  auto ODESystem1stOrder = [&](const Eigen::VectorXd &w, Eigen::VectorXd &dwdt,
-                               double t) {
-    // JK ordering
-    Eigen::VectorXd valsJ = (P.transpose() * w.head(numDofs)).head(numDofsJ);
-    Eigen::VectorXd veloJ = (P.transpose() * w.tail(numDofs)).head(numDofsJ);
-    // Update constrained dofs
-    auto B = constraints.GetSparseGlobalRhs(dof, numDofs, t);
-    Eigen::VectorXd vals = cmat * valsJ + B;
-    Eigen::VectorXd velo = cmat * veloJ; // Here is actually a dot(B) missing
-    // Node Merge
-    for (auto &nd : dofNodes) {
+    Eigen::VectorXd state(2 * numDofsJ);
+    // Extract values
+    for (NodeSimple &nd : mDofNodes) {
       int dofNr = nd.GetDofNumber(0);
-      nd.SetValue(0, vals[dofNr], 0);
-      nd.SetValue(0, velo[dofNr], 1);
+      int dofNrJK = GlobalToJK.indices()[dofNr];
+      if (dofNrJK < numDofsJ) {
+        state[dofNrJK] = nd.GetValues(0)[0];
+        state[dofNrJK + numDofsJ] = nd.GetValues(1)[0];
+      } else {
+        // ignore dependent dofs
+      }
     }
-    Eigen::VectorXd rhsFull =
-        asmbl.BuildVector(domainCellGroup, {dof}, rightHandSide)[dof];
-    dwdt.head(numDofs) = velo;
-    Eigen::VectorXd dwdtJK = massMxModInv2Full * rhsFull;
-    dwdt.tail(numDofs) = dwdtJK;
-  };
 
-  // ******************************
-  //      Set Initial Condition
-  // ******************************
+    TimeIntegration::RK4<Eigen::VectorXd> ti;
 
-  // Dof Values
+    double t = 0.;
+    int plotcounter = 1;
+    for (int i = 0; i < numSteps; i++) {
+      t = i * stepSize;
+      ti.do_step(ODESystem1stOrder, state, t, stepSize);
+
+      std::cout << i + 1 << std::endl;
+      if ((i * 100) % numSteps == 0) {
+        NuTo::Visualize::Visualizer visualize(
+            mCellGroup,
+            NuTo::Visualize::VoronoiHandler(Visualize::VoronoiGeometryLine(
+                mOrder + 1, Visualize::LOBATTO)));
+        visualize.DofValues(mDof);
+        visualize.WriteVtuFile(mResultDirectoryFull.string() +
+                               std::string("Wave1D_") +
+                               std::to_string(plotcounter) + ".vtu");
+        plotcounter++;
+      }
+    }
+  }
+
+private:
+  MeshFem mMesh;
+  Group<ElementCollectionFem> mDomain;
+  Group<NodeSimple> mDofNodes;
+
+  int mOrder;
+
+  DofType mDof;
+  Constraint::Constraints mConstraints;
+
+  IntegrationTypeTensorProduct<1> mIntegrationType;
+  CellStorage mCells;
+  Group<CellInterface> mCellGroup;
+
+  boost::filesystem::path mResultDirectoryFull;
+};
+
+int main(int argc, char *argv[]) {
+
+  // ***************************
+  // Some nice looking functions
+  // ***************************
+
   auto cosineBump = [](double x) {
     double a = 0.3;
     double b = 0.7;
@@ -197,69 +208,38 @@ int main(int argc, char *argv[]) {
     return 0.;
   };
 
-  double speed = -1.;
-
-  auto cosineBumpDerivative = [speed](double x) {
+  auto cosineBumpDerivative = [](double x) {
     double a = 0.3;
     double b = 0.7;
     if ((a < x) && (x < b)) {
-      return speed * M_PI / (b - a) * sin(2 * M_PI * (x - a) / (b - a));
+      return M_PI / (b - a) * sin(2 * M_PI * (x - a) / (b - a));
     }
     return 0.;
   };
 
-  // Velocities
-  auto zeroFunc = [](double x) { return 0.; };
-
-  Tools::SetValues(domain, dof, zeroFunc, 0);
-  Tools::SetValues(domain, dof, zeroFunc, 1);
-
-  // *********************************
-  //      Visualize
-  // *********************************
-
-  auto visualizeResult = [&](std::string filename) {
-    NuTo::Visualize::Visualizer visualize(
-        domainCellGroup,
-        NuTo::Visualize::VoronoiHandler(
-            Visualize::VoronoiGeometryLine(numIPs, Visualize::LOBATTO)));
-    visualize.DofValues(dof);
-    visualize.WriteVtuFile(filename + ".vtu");
+  auto smearedStepFunction = [](double t, double tau) {
+    if ((0 < t) && (t < tau)) {
+      return 0.5 * (1. - cos(2 * M_PI * t / tau));
+    }
+    return 0.;
   };
 
-  // ******************************
-  //   Time integration
-  // ******************************
+  // ****************************
+  // Solving the 1D wave equation
+  // ****************************
 
-  Eigen::VectorXd state(2 * numDofs);
-  // Extract values
-  for (NodeSimple &nd : dofNodes) {
-    int dofNr = nd.GetDofNumber(0);
-    state[dofNr] = nd.GetValues(0)[0];
-    state[dofNr + numDofs] = nd.GetValues(1)[0];
-  }
+  int numElms = 100;
+  int interpolationOrder = 3;
 
-  TimeIntegration::RK4<Eigen::VectorXd> ti;
+  int numSteps = 1000;
+  double stepSize = 0.001;
+  double tau = 0.3;
 
-  //  boost::numeric::odeint::runge_kutta4<
-  //      Eigen::VectorXd, double, Eigen::VectorXd, double,
-  //      boost::numeric::odeint::vector_space_algebra>
-  //      stepper;
-
-  double t = 0.;
-  int plotcounter = 1;
-  for (int i = 0; i < numSteps; i++) {
-    t = i * stepSize;
-    state = ti.DoStep(ODESystem1stOrder, state, t, stepSize);
-
-    // For odeint constant steppers:
-    // stepper.do_step(ODESystem1stOrder, state, t, stepSize);
-
-    std::cout << i + 1 << std::endl;
-    if ((i * 100) % numSteps == 0) {
-      visualizeResult(resultDirectoryFull.string() + std::string("Wave1D_") +
-                      std::to_string(plotcounter));
-      plotcounter++;
-    }
-  }
+  Wave1D example1(numElms, interpolationOrder);
+  // example1.SetValues(cosineBump, 0); // Initial data values
+  // example1.SetValues(cosineBumpDerivative, 1); // Initial data velocities
+  example1.SetDirichletBoundaryLeft([](double t) { return 0.; });
+  example1.SetDirichletBoundaryRight(
+      [&](double t) { return smearedStepFunction(t, tau); });
+  example1.Solve(numSteps, stepSize);
 }

@@ -2,6 +2,13 @@ project(MyNuToAdditions)
 cmake_minimum_required(VERSION 3.9)
 set(CMAKE_CXX_STANDARD 14)
 
+FIND_PACKAGE( OpenMP REQUIRED)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
+
+find_package(Boost COMPONENTS unit_test_framework REQUIRED)
+
 find_path(EIGEN_INCLUDE_DIR NAMES Eigen/Core PATH_SUFFIXES eigen3)
 include_directories(${EIGEN_INCLUDE_DIR})
 include_directories("nuto")
@@ -21,6 +28,7 @@ link_directories("${CMAKE_CURRENT_BINARY_DIR}/lib")
 foreach(myFile
     MeshTopology
     ConstraintOrdering
+    ParallelAssembly
    )
 ADD_EXECUTABLE(${myFile} ${myFile}.cpp)
 add_dependencies(${myFile} nuto)
