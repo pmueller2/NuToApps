@@ -10,10 +10,10 @@
 
 #include "nuto/mechanics/tools/CellStorage.h"
 
+#include "nuto/mechanics/integrationtypes/IntegrationCompanion.h"
+
 #include "nuto/mechanics/interpolation/InterpolationQuadLinear.h"
 #include "nuto/mechanics/interpolation/InterpolationTriangleLinear.h"
-
-#include "nuto/mechanics/integrationtypes/IntegrationCompanion.h"
 
 #include "nuto/visualize/AverageGeometries.h"
 #include "nuto/visualize/AverageHandler.h"

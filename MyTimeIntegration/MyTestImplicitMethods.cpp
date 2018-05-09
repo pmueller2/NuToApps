@@ -99,18 +99,4 @@ int main(int /* argc */, char ** /* argv */) {
     guess = result;
     std::cout << result[0] << std::endl;
   }
-
-  // Newmark result
-  std::cout << std::endl;
-  std::cout << std::endl;
-
-  Newmark<Eigen::Matrix<double, 2, 1>, Eigen::Matrix<double, 2, 1>> ti4;
-
-  for (int i = 0; i < n; i++) {
-    double t = i * h;
-    Tstate result = ti4.DoStep(f, j0, j1, j2, w0, v0, a0, wGuess, t, h);
-    w = result;
-    guess = result;
-    std::cout << result[0] << std::endl;
-  }
 }

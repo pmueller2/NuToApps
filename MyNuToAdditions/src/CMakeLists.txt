@@ -27,7 +27,6 @@ link_directories("${CMAKE_CURRENT_BINARY_DIR}/lib")
 
 foreach(myFile
     MeshTopology
-    ConstraintOrdering
     ParallelAssembly
    )
 ADD_EXECUTABLE(${myFile} ${myFile}.cpp)

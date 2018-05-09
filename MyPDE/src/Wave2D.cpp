@@ -6,7 +6,7 @@
 #include "nuto/mechanics/tools/CellStorage.h"
 
 #include "nuto/mechanics/interpolation/InterpolationQuadLobatto.h"
-#include "nuto/mechanics/interpolation/InterpolationQuadQuadratic.h"
+#include "nuto/mechanics/interpolation/InterpolationQuadSerendipity.h"
 
 #include "nuto/mechanics/constraints/ConstraintCompanion.h"
 #include "nuto/mechanics/constraints/Constraints.h"

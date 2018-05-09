@@ -1,6 +1,6 @@
 #pragma once
 
-#include "math/NewtonRaphson.h"
+#include "nuto/math/NewtonRaphson.h"
 #include <eigen3/Eigen/Dense>
 
 template <typename Tstate, typename Tmxstate> class ImplicitEuler {
@@ -36,38 +36,36 @@ public:
 
     double t = t0 + h;
 
-    auto ResidualFunction = [&](Tstate w){
-        Tstate dwdt;
-        f(w,dwdt,t);
-        Tstate result = w0 - w + h*dwdt;
-        return (result);
+    auto ResidualFunction = [&](Tstate w) {
+      Tstate dwdt;
+      f(w, dwdt, t);
+      Tstate result = w0 - w + h * dwdt;
+      return (result);
     };
 
-    auto DerivativeFunction = [&](Tstate w){
-        Tmxstate jac;
-        df(w,jac,t);
-        Tmxstate result = h*jac-jac.Identity(w.size(),w.size());
-        return result;
+    auto DerivativeFunction = [&](Tstate w) {
+      Tmxstate jac;
+      df(w, jac, t);
+      Tmxstate result = h * jac - jac.Identity(w.size(), w.size());
+      return result;
     };
 
     auto Norm = [](Tstate w) { return w.norm(); };
 
-    auto problem = NuTo::NewtonRaphson::DefineProblem(ResidualFunction,DerivativeFunction,Norm,1.e-6);
+    auto problem = NuTo::NewtonRaphson::DefineProblem(
+        ResidualFunction, DerivativeFunction, Norm, 1.e-6);
 
-    class EigenSolverWrapper
-    {
+    class EigenSolverWrapper {
     public:
-
-        Tstate Solve(Tmxstate& DR, const Tstate& R)
-        {
-            Tstate result = DR.colPivHouseholderQr().solve(R);
-            return result;
-        }
+      Tstate Solve(Tmxstate &DR, const Tstate &R) {
+        Tstate result = DR.colPivHouseholderQr().solve(R);
+        return result;
+      }
     };
 
-    auto result = NuTo::NewtonRaphson::Solve(problem,initialGuess,EigenSolverWrapper());
+    auto result =
+        NuTo::NewtonRaphson::Solve(problem, initialGuess, EigenSolverWrapper());
 
     return result;
   }
 };
-

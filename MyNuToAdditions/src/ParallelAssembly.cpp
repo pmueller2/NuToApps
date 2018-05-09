@@ -16,7 +16,7 @@
 using namespace NuTo;
 
 BOOST_AUTO_TEST_CASE(OmpParallelVectorAssembly) {
-  int n = 1e5;
+  int n = 1e4;
   int order = 4;
   MeshFem mesh;
   {
@@ -103,7 +103,7 @@ BOOST_AUTO_TEST_CASE(OmpParallelVectorAssembly) {
 }
 
 BOOST_AUTO_TEST_CASE(OmpParallelMatrixAssembly) {
-  int n = 1e5;
+  int n = 1e4;
   int order = 4;
   MeshFem mesh = UnitMeshFem::CreateLines(n);
   DofType dof("Displacement", 1);
@@ -156,10 +156,12 @@ BOOST_AUTO_TEST_CASE(OmpParallelMatrixAssembly) {
       }
     }
 #pragma omp critical
-    triplets.insert(triplets.end(), localtriplets.begin(), localtriplets.end());
+    triplets.splice(triplets.end(), localtriplets);
   }
+
   {
-    // timer.Reset("SetFromTriplets");
+    timer.Reset("    SetFromTriplets");
+
     hessian.setFromTriplets(triplets.begin(), triplets.end());
   }
   // ******************************************

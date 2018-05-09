@@ -1,5 +1,6 @@
 #include <iostream>
 
+#include "../../NuToHelpers/InterpolationQuadHierarchical.h"
 #include "../../NuToHelpers/InterpolationTrussHierarchical.h"
 
 using namespace NuTo;

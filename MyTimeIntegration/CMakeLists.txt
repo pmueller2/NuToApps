@@ -6,7 +6,8 @@ find_package(NuTo)
 
 foreach(myFile
         MyTestImplicitMethods
+        MyTestExplicitMethods
    )
 ADD_EXECUTABLE(${myFile} ${myFile}.cpp)
-TARGET_LINK_LIBRARIES(${myFile} NuTo::Mechanics NuTo::Math NuTo::Base NuTo::Visualize ${Boost_LIBRARIES} ${LAPACK_LIBRARIES} )
+TARGET_LINK_LIBRARIES(${myFile} NuTo ${Boost_LIBRARIES} ${LAPACK_LIBRARIES} )
 endforeach(myFile)

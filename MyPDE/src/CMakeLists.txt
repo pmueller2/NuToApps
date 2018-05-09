@@ -2,7 +2,6 @@ project(MyPDEs)
 cmake_minimum_required(VERSION 3.0)
 set(CMAKE_CXX_STANDARD 14)
 
-find_package(NuTo)
 
 set(CMAKE_LIBRARY_ARCHITECTURE "x86_64-linux-gnu")
 # look for library files, including default paths
@@ -10,6 +9,7 @@ find_library(ARPACK_LIBRARY
   NAMES "arpack"
   PATH_SUFFIXES "lib" "lib32" "lib64"
 )
+find_package(NuTo)
 
 foreach(inputFile
         square0.01.msh
@@ -44,7 +44,7 @@ foreach(myFile
     #ElasticityPlateTiltedCrack
     #ElasticityRectangleTiltedCrack
     #HelmholtzRectangle
-    #InterpolationHierarchical
+    InterpolationHierarchical
     #Interpolation1DTests
     #InterpolationTrigonometricTest
     LocalCoordinatesFromGlobal

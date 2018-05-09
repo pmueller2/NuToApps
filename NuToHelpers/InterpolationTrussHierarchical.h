@@ -21,7 +21,7 @@ public:
         return std::make_unique<InterpolationTrussHierarchical>(*this);
     }
 
-    ShapeFunctions GetShapeFunctions(const NaturalCoords& coords) const override
+    Eigen::VectorXd GetShapeFunctions(const NaturalCoords& coords) const override
     {
         double x = coords[0];
         Eigen::VectorXd shapes(mDegree+1);
@@ -35,7 +35,7 @@ public:
         return shapes;
     }
 
-    DerivativeShapeFunctionsNatural GetDerivativeShapeFunctions(const NaturalCoords& coords) const override
+    Eigen::MatrixXd GetDerivativeShapeFunctions(const NaturalCoords& coords) const override
     {
         double x = coords[0];
         Eigen::VectorXd derivativeShapes(mDegree+1);
