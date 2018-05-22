@@ -24,6 +24,7 @@
 #include "../../MyTimeIntegration/NY4NoVelocity.h"
 #include "../../NuToHelpers/ConstraintsHelper.h"
 
+#include "boost/filesystem.hpp"
 #include <iostream>
 
 using namespace NuTo;
@@ -46,15 +47,38 @@ int main(int argc, char *argv[]) {
   //      Geometry parameter
   // *********************************
 
-  MeshGmsh gmsh("Crack3D_angle45_h1_2ndOrder.msh");
+  MeshGmsh gmsh("plateH1_angle45_L0.4.msh");
   MeshFem &mesh = gmsh.GetMeshFEM();
   auto domain = gmsh.GetPhysicalGroup("Domain");
   auto backCrackFace = gmsh.GetPhysicalGroup("BackCrackFace");
   auto frontCrackFace = gmsh.GetPhysicalGroup("FrontCrackFace");
   auto crackBoundary = Unite(frontCrackFace, backCrackFace);
 
-  // The normals produced by tethex are completely wrong
-  // Check with Gmsh and the manually change signs
+  // **************************************
+  // Result directory, filesystem
+  // **************************************
+
+  std::string resultDirectory = "/ElasticWaves3D/";
+  bool overwriteResultDirectory = true;
+
+  // delete result directory if it exists and create it new
+  boost::filesystem::path rootPath = boost::filesystem::initial_path();
+  boost::filesystem::path resultDirectoryFull = rootPath.parent_path()
+                                                    .parent_path()
+                                                    .append("/results")
+                                                    .append(resultDirectory);
+
+  if (boost::filesystem::exists(resultDirectoryFull)) // does p actually exist?
+  {
+    if (boost::filesystem::is_directory(resultDirectoryFull)) {
+      if (overwriteResultDirectory) {
+        boost::filesystem::remove_all(resultDirectoryFull);
+        boost::filesystem::create_directory(resultDirectoryFull);
+      }
+    }
+  } else {
+    boost::filesystem::create_directory(resultDirectoryFull);
+  }
 
   // ***********************************
   //    Dofs, Interpolation
@@ -62,7 +86,7 @@ int main(int argc, char *argv[]) {
 
   double tau = 1.0e-6;
   double stepSize = 0.006e-6;
-  int numSteps = 100000;
+  int numSteps = 10000;
 
   double E = 200.0e9;
   double nu = 0.3;
@@ -72,11 +96,11 @@ int main(int argc, char *argv[]) {
   double crackRadius = 0.2;
 
   double crackArea = M_PI * crackRadius * crackRadius;
-  double loadPressureMagnitude = -1. / crackArea;
+  double loadMagnitude = 1. / crackArea;
 
   // Load on Front crack face
   Eigen::Vector3d crackLoad(0., -sin(crackAngle), cos(crackAngle));
-  crackLoad *= loadPressureMagnitude;
+  crackLoad *= loadMagnitude;
 
   DofType dof1("Displacements", 3);
 
@@ -129,8 +153,6 @@ int main(int argc, char *argv[]) {
 
   int numDofs =
       dofInfo.numIndependentDofs[dof1] + dofInfo.numDependentDofs[dof1];
-
-  std::cout << "NumDofs: " << numDofs << std::endl;
 
   SimpleAssembler asmbl = SimpleAssembler(dofInfo);
 
@@ -224,6 +246,15 @@ int main(int argc, char *argv[]) {
     d2wdt2 = (tmp.array() / massMxMod.array()).matrix();
   };
 
+  // ***********************
+  // General infos
+  // ***********************
+
+  std::cout << "NumDofs: " << numDofs << std::endl;
+
+  // ***********************
+  // Solve
+  // ***********************
   int plotcounter = 1;
   for (int i = 0; i < numSteps; i++) {
     t = i * stepSize;
@@ -231,7 +262,8 @@ int main(int argc, char *argv[]) {
     std::cout << i + 1 << std::endl;
     if ((i * 100) % numSteps == 0) {
       MergeResult(state.first);
-      visualizeResult("Crack3D_angle45_h1_NormalLoad2ndOrderSlow" +
+      visualizeResult(resultDirectoryFull.string() +
+                      "Crack3D_angle45_h2_NormalLoad2ndOrderSlow_" +
                       std::to_string(plotcounter));
       plotcounter++;
     }
