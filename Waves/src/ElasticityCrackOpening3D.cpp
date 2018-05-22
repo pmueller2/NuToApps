@@ -23,6 +23,7 @@
 
 #include "../../MyTimeIntegration/NY4NoVelocity.h"
 #include "../../NuToHelpers/ConstraintsHelper.h"
+#include "../../NuToHelpers/MeshValuesTools.h"
 
 #include "boost/filesystem.hpp"
 #include <iostream>
@@ -47,8 +48,9 @@ int main(int argc, char *argv[]) {
   //      Geometry parameter
   // *********************************
 
-  MeshGmsh gmsh("plateH1_angle45_L0.4.msh");
+  MeshGmsh gmsh("plateH2_angle45_L0.4.msh");
   MeshFem &mesh = gmsh.GetMeshFEM();
+  auto top = gmsh.GetPhysicalGroup("Top");
   auto domain = gmsh.GetPhysicalGroup("Domain");
   auto backCrackFace = gmsh.GetPhysicalGroup("BackCrackFace");
   auto frontCrackFace = gmsh.GetPhysicalGroup("FrontCrackFace");
@@ -79,6 +81,49 @@ int main(int argc, char *argv[]) {
   } else {
     boost::filesystem::create_directory(resultDirectoryFull);
   }
+
+  // **************************************
+  // OutputNodes/OutputData
+  // **************************************
+
+  double centerX = 5.;
+  double centerZ = 5.;
+
+  // Set up a list of output coordinates
+
+  int numOutRadius = 2;
+  double minR = 1.;
+  double maxR = 4.5;
+
+  std::vector<double> outRadius;
+  for (int i = 0; i < numOutRadius; i++) {
+    outRadius.push_back(minR + i * (maxR - minR) / (numOutRadius - 1));
+  }
+
+  // Angles in degree
+  int numOutAngles = 2;
+  double minPhi = 0.0;
+  double maxPhi = 90.0;
+
+  std::vector<double> outAngles;
+  for (int i = 0; i < numOutAngles; i++) {
+    outAngles.push_back(2 * M_PI / 360. *
+                        (minPhi + i * (maxPhi - minPhi) / (numOutAngles - 1)));
+  }
+
+  Eigen::MatrixXd outputCoords(numOutAngles * numOutRadius, 3);
+
+  int count = 0;
+  for (double r : outRadius) {
+    for (double phi : outAngles) {
+      outputCoords(count, 0) = r * cos(phi) + centerX;
+      outputCoords(count, 1) = 1.;
+      outputCoords(count, 2) = r * sin(phi) + centerZ;
+      count++;
+    }
+  }
+
+  Tools::Interpolator myInterpolator(outputCoords, top, mesh);
 
   // ***********************************
   //    Dofs, Interpolation
@@ -255,13 +300,29 @@ int main(int argc, char *argv[]) {
   // ***********************
   // Solve
   // ***********************
+
+  std::ofstream outfile;
+
   int plotcounter = 1;
   for (int i = 0; i < numSteps; i++) {
     t = i * stepSize;
     state = ti.DoStep(eq, state.first, state.second, t, stepSize);
+    MergeResult(state.first);
     std::cout << i + 1 << std::endl;
+    // output to data file
+    outfile.open(resultDirectoryFull.string() + "topDisplacements.txt");
+    int count = 0;
+    for (double r : outRadius) {
+      for (double phi : outAngles) {
+        Eigen::VectorXd displ = myInterpolator.GetValue(i, dof1);
+        outfile << displ[1] << "\t";
+        count++;
+      }
+    }
+    outfile << std::endl;
+    outfile.close();
+    // plot
     if ((i * 100) % numSteps == 0) {
-      MergeResult(state.first);
       visualizeResult(resultDirectoryFull.string() +
                       "Crack3D_angle45_h2_NormalLoad2ndOrderSlow_" +
                       std::to_string(plotcounter));
