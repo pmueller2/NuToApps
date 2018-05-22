@@ -25,6 +25,7 @@ foreach(inputFile
         plateH2_angle45_L0.4.msh
         plateH1_angle45_L0.4.msh
         plateH0.5_angle45_L0.4.msh
+        plateH0.75_angle45_L0.4.msh
     )
     execute_process(COMMAND "${CMAKE_COMMAND}" "-E" "create_symlink"
         "${CMAKE_CURRENT_SOURCE_DIR}/${inputFile}"

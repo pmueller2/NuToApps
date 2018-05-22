@@ -143,7 +143,7 @@ Eigen::VectorXd GetLocalCoordinates2Din3D(Eigen::VectorXd globalCoords, ElementF
     double correctorNorm = 1.;
     while ((correctorNorm > tol) && (numIterations < maxNumIterations))
     {
-        Eigen::MatrixXd der = ipol.GetDerivativeShapeFunctions(localCoords);
+        Eigen::MatrixXd der = ipol.GetDerivativeShapeFunctions(localCoords.head(2));
         Eigen::MatrixXd jac(spaceDim,spaceDim);
         Eigen::MatrixXd jacTmp = nodeVals.transpose() * der;
         for (int i=0; i<localDim; i++)
@@ -154,7 +154,7 @@ Eigen::VectorXd GetLocalCoordinates2Din3D(Eigen::VectorXd globalCoords, ElementF
         Eigen::Vector3d colB = jacTmp.col(1);
         Eigen::Vector3d normal = (colA.cross(colB)).normalized();
         jac.col(localDim) = normal;
-        Eigen::VectorXd res = globalCoords - Interpolate(elm,localCoords);
+        Eigen::VectorXd res = globalCoords - Interpolate(elm,localCoords.head(2));
         Eigen::VectorXd dX = jac.inverse() * res;
         correctorNorm = dX.norm();
         Eigen::VectorXd xiNew = localCoords + dX;
@@ -163,7 +163,8 @@ Eigen::VectorXd GetLocalCoordinates2Din3D(Eigen::VectorXd globalCoords, ElementF
     }
     if (numIterations == maxNumIterations)
         throw Exception(__PRETTY_FUNCTION__,"Exceeded number of iterations");
-    return localCoords;
+    // The 3rd value could be interesting though
+    return localCoords.head(2);
 }
 
 class Interpolator
@@ -171,7 +172,8 @@ class Interpolator
 public:
     Interpolator(Eigen::MatrixXd coordinates, const Group<ElementCollectionFem> elements) : mElements(elements), mCoordinates(coordinates)
     {
-        int numCoords = coordinates.rows();
+        const int numCoords = coordinates.rows();
+        const int spaceDim = coordinates.cols();
 
         Group<NodeSimple> allCoordNodes;
           for (auto& element : mElements)
@@ -196,8 +198,15 @@ public:
           }
           auto nearbyElements = coordinateNodeElementMap.at(nearestNode);
           for (ElementCollectionFem *elm : nearbyElements) {
-            Eigen::VectorXd localCoord = Tools::GetLocalCoordinatesFromGlobal(
-                globalCoord, elm->CoordinateElement());
+              Eigen::VectorXd localCoord;
+              if ((spaceDim ==3) && (elm->CoordinateElement().Interpolation().GetLocalCoords(0).size() == 2))
+              {
+                  localCoord = Tools::GetLocalCoordinates2Din3D(
+                      globalCoord, elm->CoordinateElement());
+              } else{
+                  localCoord = Tools::GetLocalCoordinatesFromGlobal(
+                      globalCoord, elm->CoordinateElement());
+              }
             if (elm->GetShape().IsWithinShape(localCoord)) {
               outputElements[i] = elm;
               localOutputCoordinates[i] = localCoord;

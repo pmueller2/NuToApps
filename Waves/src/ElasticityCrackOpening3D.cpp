@@ -48,7 +48,7 @@ int main(int argc, char *argv[]) {
   //      Geometry parameter
   // *********************************
 
-  MeshGmsh gmsh("plateH2_angle45_L0.4.msh");
+  MeshGmsh gmsh("plateH0.75_angle45_L0.4.msh");
   MeshFem &mesh = gmsh.GetMeshFEM();
   auto top = gmsh.GetPhysicalGroup("Top");
   auto domain = gmsh.GetPhysicalGroup("Domain");
@@ -91,7 +91,7 @@ int main(int argc, char *argv[]) {
 
   // Set up a list of output coordinates
 
-  int numOutRadius = 2;
+  int numOutRadius = 5;
   double minR = 1.;
   double maxR = 4.5;
 
@@ -101,7 +101,7 @@ int main(int argc, char *argv[]) {
   }
 
   // Angles in degree
-  int numOutAngles = 2;
+  int numOutAngles = 10;
   double minPhi = 0.0;
   double maxPhi = 90.0;
 
@@ -131,7 +131,7 @@ int main(int argc, char *argv[]) {
 
   double tau = 1.0e-6;
   double stepSize = 0.006e-6;
-  int numSteps = 10000;
+  int numSteps = 50000;
 
   double E = 200.0e9;
   double nu = 0.3;
@@ -159,6 +159,7 @@ int main(int argc, char *argv[]) {
 
   auto &ipol2D = mesh.CreateInterpolation(InterpolationQuadLobatto(order));
   AddDofInterpolation(&mesh, dof1, crackBoundary, ipol2D);
+  AddDofInterpolation(&mesh, dof1, top, ipol2D);
 
   // ***********************************
   //    Set up integration, add cells
@@ -310,11 +311,12 @@ int main(int argc, char *argv[]) {
     MergeResult(state.first);
     std::cout << i + 1 << std::endl;
     // output to data file
-    outfile.open(resultDirectoryFull.string() + "topDisplacements.txt");
+    outfile.open(resultDirectoryFull.string() + "topDisplacements.txt",
+                 std::ios::app);
     int count = 0;
     for (double r : outRadius) {
       for (double phi : outAngles) {
-        Eigen::VectorXd displ = myInterpolator.GetValue(i, dof1);
+        Eigen::VectorXd displ = myInterpolator.GetValue(count, dof1);
         outfile << displ[1] << "\t";
         count++;
       }
@@ -324,7 +326,7 @@ int main(int argc, char *argv[]) {
     // plot
     if ((i * 100) % numSteps == 0) {
       visualizeResult(resultDirectoryFull.string() +
-                      "Crack3D_angle45_h2_NormalLoad2ndOrderSlow_" +
+                      "Crack3D_angle45_h0.75_NormalLoad2ndOrderSlow_" +
                       std::to_string(plotcounter));
       plotcounter++;
     }
