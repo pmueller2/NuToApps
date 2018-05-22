@@ -1,7 +1,7 @@
 #include <iostream>
 
 #include "nuto/mechanics/interpolation/InterpolationQuadLinear.h"
-#include "nuto/mechanics/interpolation/InterpolationQuadQuadratic.h"
+#include "nuto/mechanics/interpolation/InterpolationQuadSerendipity.h"
 #include "nuto/mechanics/interpolation/InterpolationTrussLinear.h"
 #include "nuto/mechanics/interpolation/InterpolationTrussLobatto.h"
 #include "nuto/mechanics/mesh/MeshFemDofConvert.h"
@@ -19,6 +19,8 @@
 
 #include "nuto/visualize/AverageHandler.h"
 #include "nuto/visualize/Visualizer.h"
+
+#include <eigen3/unsupported/Eigen/ArpackSupport>
 
 namespace NuTo {
 
@@ -62,9 +64,8 @@ struct StrainB1 : Interface {
     Eigen::MatrixXd B = Eigen::MatrixXd::Zero(3, numNodes * 2);
     for (int iNode = 0, iColumn = 0; iNode < numNodes; ++iNode, iColumn += 2) {
       B(1, iColumn + 1) = mN(0, iColumn);
-      B(2, iColumn) = mN(0, iColumn);
+      B(2, iColumn) = mN(1, iColumn + 1);
     }
-
     return B;
   }
 
@@ -100,19 +101,22 @@ int main(int argc, char *argv[]) {
 
   double rho = 7850;
   double nu = 0.3;
-  double E = 210;
+  double E = 210e9;
+
+  int numElms = 1;
+  int order = 10;
 
   Eigen::Matrix3d stiffnessTensor;
   stiffnessTensor << 1 - nu, nu, 0, //
       nu, 1 - nu, 0,                //
       0, 0, (1. - 2. * nu) / 2.;    //
-  stiffnessTensor *= E / ((1 + nu) * (1 - 2 * nu));
+  stiffnessTensor *= E / ((1. + nu) * (1 - 2. * nu));
 
-  MeshFem mesh = UnitMeshFem::CreateLines(1);
+  MeshFem mesh =
+      UnitMeshFem::Transform(UnitMeshFem::CreateLines(numElms),
+                             [](Eigen::VectorXd x) { return x * 0.01; });
 
   DofType dof("Displacements", 2);
-
-  int order = 10;
 
   InterpolationTrussLobatto ipol(order);
 
@@ -143,10 +147,10 @@ int main(int argc, char *argv[]) {
     return massMx;
   };
 
-  GlobalDofMatrixSparse massMx =
+  DofMatrixSparse<double> massMx =
       asmbl.BuildMatrix(cellGroup, {dof}, massMxFunc);
 
-  auto E0MxFunc = [&](const CellIpData &cipd) {
+  auto E0MxFunc = [stiffnessTensor, dof](const CellIpData &cipd) {
 
     DofMatrix<double> E0Mx;
     Eigen::MatrixXd N = cipd.N(dof);
@@ -156,18 +160,24 @@ int main(int argc, char *argv[]) {
     return E0Mx;
   };
 
-  auto E1MxFunc = [&](const CellIpData &cipd) {
+  auto E1MxFunc = [stiffnessTensor, dof](const CellIpData &cipd) {
 
     DofMatrix<double> E1Mx;
     Eigen::MatrixXd N = cipd.N(dof);
-    Eigen::MatrixXd B1 = cipd.B(dof, Nabla::StrainB1(N));
-    Eigen::MatrixXd B2 = cipd.B(dof, Nabla::StrainB2());
+
+    //    Eigen::MatrixXd B1 = cipd.B(dof, Nabla::StrainB1(N));
+    //    Eigen::MatrixXd B2 = cipd.B(dof, Nabla::StrainB2());
+
+    Eigen::MatrixXd B1 =
+        Nabla::StrainB1(N)(cipd.CalculateDerivativeShapeFunctionsGlobal(dof));
+    Eigen::MatrixXd B2 =
+        Nabla::StrainB2()(cipd.CalculateDerivativeShapeFunctionsGlobal(dof));
 
     E1Mx(dof, dof) = B2.transpose() * stiffnessTensor * B1;
     return E1Mx;
   };
 
-  auto E2MxFunc = [&](const CellIpData &cipd) {
+  auto E2MxFunc = [stiffnessTensor, dof](const CellIpData &cipd) {
 
     DofMatrix<double> E2Mx;
     Eigen::MatrixXd B2 = cipd.B(dof, Nabla::StrainB2());
@@ -177,32 +187,64 @@ int main(int argc, char *argv[]) {
   };
 
   Eigen::SparseMatrix<double> E0Mx =
-      asmbl.BuildMatrix(cellGroup, {dof}, E0MxFunc).JJ(dof, dof);
+      asmbl.BuildMatrix(cellGroup, {dof}, E0MxFunc)(dof, dof);
   Eigen::SparseMatrix<double> E1Mx =
-      asmbl.BuildMatrix(cellGroup, {dof}, E1MxFunc).JJ(dof, dof);
+      asmbl.BuildMatrix(cellGroup, {dof}, E1MxFunc)(dof, dof);
   Eigen::SparseMatrix<double> E2Mx =
-      asmbl.BuildMatrix(cellGroup, {dof}, E2MxFunc).JJ(dof, dof);
+      asmbl.BuildMatrix(cellGroup, {dof}, E2MxFunc)(dof, dof);
 
-  Eigen::SparseMatrix<double> M = massMx.JJ(dof, dof);
+  Eigen::SparseMatrix<double> M = massMx(dof, dof);
+
+  /*
+  std::cout << "E0\n" << E0Mx.toDense() << std::endl;
+  std::cout << "E1\n" << E1Mx.toDense() << std::endl;
+  std::cout << "E2\n" << E2Mx.toDense() << std::endl;
+  std::cout << "M\n" << M.toDense() << std::endl;
+  */
 
   // ************************
   // Construct Z(omega)
   // ************************
 
-  int numOmega = 100;
+  int numOmega = 1000;
   double omegaMax = 1e6;
 
-  for (int i = 0; i < numOmega; i++) {
+  for (int i = 1; i < numOmega; i++) {
     double omega = i * omegaMax / (numOmega - 1);
+    // double omega = 0.55e6;
 
     Eigen::MatrixXd Z11 = E0Mx.toDense().inverse() * E1Mx.toDense().transpose();
     Eigen::MatrixXd Z12 = -E0Mx.toDense().inverse();
     Eigen::MatrixXd Z21 = omega * omega * M - E2Mx +
-                          E1Mx * E0Mx.toDense().inverse() * E0Mx.transpose();
+                          E1Mx * (E0Mx.toDense().inverse() * E1Mx.transpose());
     Eigen::MatrixXd Z22 = -E1Mx * E0Mx.toDense().inverse();
 
     Eigen::MatrixXd Z(Z11.rows() + Z21.rows(), Z11.cols() + Z12.cols());
     Z << Z11, Z12, Z21, Z22;
+
+    Eigen::MatrixXd Zexpected(Z11.rows() + Z21.rows(), Z11.cols() + Z12.cols());
+
+    //    Zexpected << -0.0000000e+00, -4.2857143e+01, -0.0000000e+00,
+    //    4.2857143e+01,
+    //        -7.0748299e-10, 0.0000000e+00, 0.0000000e+00, 0.0000000e+00,
+    //        -1.0000000e+02, -0.0000000e+00, 1.0000000e+02, -0.0000000e+00,
+    //        0.0000000e+00, -2.4761905e-09, 0.0000000e+00, 0.0000000e+00,
+    //        -0.0000000e+00, -4.2857143e+01, -0.0000000e+00, 4.2857143e+01,
+    //        0.0000000e+00, 0.0000000e+00, -7.0748299e-10, 0.0000000e+00,
+    //        -1.0000000e+02, -0.0000000e+00, 1.0000000e+02, -0.0000000e+00,
+    //        0.0000000e+00, 0.0000000e+00, 0.0000000e+00, -2.4761905e-09,
+    //        9.7656250e-04, -0.0000000e+00, -9.7656250e-04, -0.0000000e+00,
+    //        0.0000000e+00, 1.0000000e+02, 0.0000000e+00, 1.0000000e+02,
+    //        -0.0000000e+00, -2.3076923e+13, -0.0000000e+00, 2.3076923e+13,
+    //        4.2857143e+01, 0.0000000e+00, 4.2857143e+01, 0.0000000e+00,
+    //        -9.7656250e-04, -0.0000000e+00, 9.7656250e-04, -0.0000000e+00,
+    //        0.0000000e+00, -1.0000000e+02, 0.0000000e+00, -1.0000000e+02,
+    //        -0.0000000e+00, 2.3076923e+13, -0.0000000e+00, -2.3076923e+13,
+    //        -4.2857143e+01, 0.0000000e+00, -4.2857143e+01, 0.0000000e+00;
+
+    //    std::cout << Z << std::endl;
+    //    std::cout << "-----------------" << std::endl;
+    //    std::cout << Zexpected << std::endl;
 
     // ************************
     // Solve Eigenvalue problem
@@ -210,18 +252,24 @@ int main(int argc, char *argv[]) {
 
     Eigen::EigenSolver<Eigen::MatrixXd> solver(Z);
     Eigen::VectorXcd eVals = solver.eigenvalues();
-    Eigen::VectorXd k = eVals.imag();
-    int n = k.size();
 
-    for (int i = 0; i < n; i++) {
-      if (k[i] < 1.e-6)
-        k[i] = INFINITY;
+    // std::cout << eVals << std::endl;
+
+    std::vector<double> eValCandidates;
+
+    for (int i = 0; i < eVals.size(); i++) {
+      std::complex<double> k = eVals[i];
+      if ((std::abs(k.real()) < 10.) && (k.imag() > 0.))
+        eValCandidates.push_back(k.imag());
     }
 
-    std::sort(k.data(), k.data() + k.size());
+    std::sort(eValCandidates.begin(), eValCandidates.end());
 
-    std::cout << omega << " " << k[0] << "\t" << k[1] << "\t" << k[2]
-              << std::endl;
+    std::cout << omega << " ";
+    for (auto k : eValCandidates) {
+      std::cout << "\t" << sqrt(k);
+    }
+    std::cout << std::endl;
   }
 
   //  Visualize::Visualizer vis(cellGroup, Visualize::AverageHandler());

@@ -178,5 +178,32 @@ struct VectorGradientCOOS : Interface
     CoordinateSystem<3>& mCS;
 };
 
+struct GradientCOOS2D : Interface
+{
+    GradientCOOS2D(CoordinateSystem<2> cs) : mCS(cs)
+    {
+
+    }
+
+    //! @brief Gradient
+    Eigen::MatrixXd operator()(const Eigen::MatrixXd& dNdX) const override
+    {
+        const int dim = dNdX.cols();
+        assert(dim==2);
+        const int numNodes = dNdX.rows();
+        // B (spacedim x numnodes)
+        Eigen::MatrixXd result(2,numNodes);
+        Eigen::Vector2d d2 = mCS.GetMetric().diagonal();
+        for (int i=0; i<numNodes; i++)
+        {
+            result(0,i) = dNdX(i,0)/sqrt(d2(0));
+            result(1,i) = dNdX(i,1)/sqrt(d2(1));
+        }
+        return result;
+    }
+
+    CoordinateSystem<2>& mCS;
+};
+
 } /* B */
 } /* NuTo */

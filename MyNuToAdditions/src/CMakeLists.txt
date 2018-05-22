@@ -25,9 +25,20 @@ ExternalProject_Add(nuto
 include_directories(${PROJECT_SOURCE_DIR}/../../NuTo)
 link_directories("${CMAKE_CURRENT_BINARY_DIR}/lib")
 
+foreach(inputFile
+        rectangle10x10.msh
+        rectangle100x100.msh
+    )
+    execute_process(COMMAND "${CMAKE_COMMAND}" "-E" "create_symlink"
+        "${CMAKE_CURRENT_SOURCE_DIR}/${inputFile}"
+        "${CMAKE_CURRENT_BINARY_DIR}/${inputFile}")
+
+endforeach()
+
 foreach(myFile
     MeshTopology
     ParallelAssembly
+    Coordinates
    )
 ADD_EXECUTABLE(${myFile} ${myFile}.cpp)
 add_dependencies(${myFile} nuto)
