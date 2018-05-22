@@ -76,7 +76,7 @@ std::map<NodeSimple *, std::vector<ElementCollectionFem *> > GetNodeElementMap(G
     return nodeElementMap;
 }
 
-std::map<NodeSimple *, std::vector<ElementCollectionFem *> > GetNodeCoordinateElementMap(Group<ElementCollectionFem>& elements)
+std::map<NodeSimple *, std::vector<ElementCollectionFem *> > GetNodeCoordinateElementMap(const Group<ElementCollectionFem>& elements)
 {
     std::map<NodeSimple *, std::vector<ElementCollectionFem *> > nodeElementMap;
     for (NuTo::ElementCollectionFem &elmColl : elements) {
@@ -125,13 +125,16 @@ Eigen::VectorXd GetLocalCoordinatesFromGlobal(Eigen::VectorXd globalCoords, Elem
 class Interpolator
 {
 public:
-    Interpolator(Eigen::MatrixXd coordinates, Group<ElementCollectionFem> elements, MeshFem& mesh) : mMeshFem(mesh), mElements(elements), mCoordinates(coordinates)
+    Interpolator(Eigen::MatrixXd coordinates, const Group<ElementCollectionFem> elements) : mElements(elements), mCoordinates(coordinates)
     {
         int numCoords = coordinates.rows();
 
-        auto allCoordNodes = mesh.NodesTotal();
+        Group<NodeSimple> allCoordNodes;
+          for (auto& element : mElements)
+              for (int iNode = 0; iNode < element.CoordinateElement().Interpolation().GetNumNodes(); ++iNode)
+                  allCoordNodes.Add(element.CoordinateElement().GetNode(iNode));
 
-        auto coordinateNodeElementMap = Tools::GetNodeCoordinateElementMap(elements);
+        auto coordinateNodeElementMap = Tools::GetNodeCoordinateElementMap(mElements);
 
         // Set up a list of corresponding localCoordinates and elements
         localOutputCoordinates.resize(numCoords);
@@ -166,8 +169,7 @@ public:
     }
 
 private:
-    MeshFem& mMeshFem;
-    Group<ElementCollectionFem>& mElements;
+    const Group<ElementCollectionFem>& mElements;
     Eigen::MatrixXd mCoordinates;
     std::vector<Eigen::VectorXd> localOutputCoordinates;
     std::vector<ElementCollectionFem *> outputElements;
