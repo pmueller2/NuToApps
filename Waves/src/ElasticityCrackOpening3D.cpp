@@ -123,7 +123,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  Tools::Interpolator myInterpolator(outputCoords, top, mesh);
+  Tools::Interpolator myInterpolator(outputCoords, top);
 
   // ***********************************
   //    Dofs, Interpolation

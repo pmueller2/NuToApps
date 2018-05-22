@@ -52,14 +52,14 @@ void TestInterpolator() {
   nd0.SetValue(0, 7.);
   nd1.SetValue(0, 6.);
 
-  Tools::Interpolator interpolator(coords, mesh.ElementsTotal(), mesh);
+  Tools::Interpolator interpolator(coords, mesh.ElementsTotal());
   std::cout << interpolator.GetValue(0, dof) << std::endl;
   std::cout << interpolator.GetValue(1, dof) << std::endl;
   std::cout << interpolator.GetValue(2, dof) << std::endl;
 }
 
 int main(int argc, char *argv[]) {
-  // TestGetLocalCoordinatesFromGlobal();
+  TestGetLocalCoordinatesFromGlobal();
   // TestGetNodeElementMap();
-  TestInterpolator();
+  // TestInterpolator();
 }

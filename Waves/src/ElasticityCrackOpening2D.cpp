@@ -50,6 +50,7 @@ int main(int argc, char *argv[]) {
 
   MeshGmsh gmsh("Crack2D_2.msh");
   MeshFem &mesh = gmsh.GetMeshFEM();
+  auto top = gmsh.GetPhysicalGroup("Top");
   auto bottom = gmsh.GetPhysicalGroup("Bottom");
   auto left = gmsh.GetPhysicalGroup("Left");
   auto crack = gmsh.GetPhysicalGroup("Crack");
@@ -97,7 +98,7 @@ int main(int argc, char *argv[]) {
     outputCoords(i, 1) = outRadius * sin(phi);
   }
 
-  Tools::Interpolator myInterpolator(outputCoords, domain, mesh);
+  Tools::Interpolator myInterpolator(outputCoords, top);
 
   // ***********************************
   //    Dofs, Interpolation
