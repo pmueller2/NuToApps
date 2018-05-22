@@ -25,6 +25,27 @@ void TestGetLocalCoordinatesFromGlobal() {
   }
 }
 
+void TestGetLocalCoordinatesFromBoundary() {
+  MeshGmsh gmsh("plateWithInternalCrackHexed.msh");
+  auto top = gmsh.GetPhysicalGroup("Top");
+
+  for (ElementCollectionFem &elmColl : top) {
+    ElementFem &elm = elmColl.CoordinateElement();
+    Eigen::Vector3d localTestCoord(0.4, -0.5, 12.);
+    Eigen::VectorXd globalTestCoord = Interpolate(elm, localTestCoord);
+    Eigen::VectorXd initTestCoord = Interpolate(elm, Eigen::Vector3d::Zero());
+    auto xi = NuTo::Tools::GetLocalCoordinates2Din3D(globalTestCoord, elm);
+    Eigen::VectorXd globalResultCoord = Interpolate(elm, xi);
+    std::cout << globalTestCoord[0] << "\t" << globalResultCoord[0] << "\t"
+              << initTestCoord[0] << std::endl;
+    std::cout << globalTestCoord[1] << "\t" << globalResultCoord[1] << "\t"
+              << initTestCoord[1] << std::endl;
+    std::cout << globalTestCoord[2] << "\t" << globalResultCoord[2] << "\t"
+              << initTestCoord[2] << std::endl;
+    std::cout << "------------------------" << std::endl;
+  }
+}
+
 void TestGetNodeElementMap() {
   MeshFem mesh = UnitMeshFem::CreateLines(10);
   auto domain = mesh.ElementsTotal();
@@ -59,7 +80,8 @@ void TestInterpolator() {
 }
 
 int main(int argc, char *argv[]) {
-  TestGetLocalCoordinatesFromGlobal();
+  // TestGetLocalCoordinatesFromGlobal();
+  TestGetLocalCoordinatesFromBoundary();
   // TestGetNodeElementMap();
   // TestInterpolator();
 }

@@ -122,6 +122,50 @@ Eigen::VectorXd GetLocalCoordinatesFromGlobal(Eigen::VectorXd globalCoords, Elem
     return localCoords;
 }
 
+Eigen::VectorXd GetLocalCoordinates2Din3D(Eigen::VectorXd globalCoords, ElementFem& elm, int maxNumIterations = 20, double tol = 1e-7)
+{
+    auto& ipol = elm.Interpolation();
+    int spaceDim = globalCoords.size();
+    int localDim = elm.Interpolation().GetLocalCoords(0).size();
+
+    if ((spaceDim != 3) && (localDim != 2))
+    {
+        throw Exception(__PRETTY_FUNCTION__,"Method is intended for 2D in 3D elements.");
+    }
+
+    Eigen::MatrixXd nodeVals(ipol.GetNumNodes(),spaceDim);
+    for (int i=0; i<nodeVals.rows();i++)
+    {
+        nodeVals.row(i) = elm.GetNode(i).GetValues().transpose();
+    }
+    Eigen::VectorXd localCoords = Eigen::VectorXd::Zero(spaceDim);
+    int numIterations = 0;
+    double correctorNorm = 1.;
+    while ((correctorNorm > tol) && (numIterations < maxNumIterations))
+    {
+        Eigen::MatrixXd der = ipol.GetDerivativeShapeFunctions(localCoords);
+        Eigen::MatrixXd jac(spaceDim,spaceDim);
+        Eigen::MatrixXd jacTmp = nodeVals.transpose() * der;
+        for (int i=0; i<localDim; i++)
+        {
+            jac.col(i) = jacTmp.col(i);
+        }
+        Eigen::Vector3d colA = jacTmp.col(0);
+        Eigen::Vector3d colB = jacTmp.col(1);
+        Eigen::Vector3d normal = (colA.cross(colB)).normalized();
+        jac.col(localDim) = normal;
+        Eigen::VectorXd res = globalCoords - Interpolate(elm,localCoords);
+        Eigen::VectorXd dX = jac.inverse() * res;
+        correctorNorm = dX.norm();
+        Eigen::VectorXd xiNew = localCoords + dX;
+        localCoords = xiNew;
+        numIterations++;
+    }
+    if (numIterations == maxNumIterations)
+        throw Exception(__PRETTY_FUNCTION__,"Exceeded number of iterations");
+    return localCoords;
+}
+
 class Interpolator
 {
 public:
