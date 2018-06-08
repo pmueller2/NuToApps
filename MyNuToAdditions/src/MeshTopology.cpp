@@ -3,81 +3,6 @@
 
 #include <iostream>
 
-Eigen::MatrixXi HexGetEdges(std::vector<int> vertices) {
-  assert(vertices.size() == 8);
-  int numEdges = 12;
-  Eigen::MatrixXi edges(numEdges, 2);
-  edges(0, 0) = vertices[0];
-  edges(0, 1) = vertices[1];
-
-  edges(1, 0) = vertices[1];
-  edges(1, 1) = vertices[2];
-
-  edges(2, 0) = vertices[2];
-  edges(2, 1) = vertices[3];
-
-  edges(3, 0) = vertices[3];
-  edges(3, 1) = vertices[0];
-
-  edges(4, 0) = vertices[4];
-  edges(4, 1) = vertices[5];
-
-  edges(5, 0) = vertices[5];
-  edges(5, 1) = vertices[6];
-
-  edges(6, 0) = vertices[6];
-  edges(6, 1) = vertices[7];
-
-  edges(7, 0) = vertices[7];
-  edges(7, 1) = vertices[4];
-
-  edges(8, 0) = vertices[0];
-  edges(8, 1) = vertices[4];
-
-  edges(9, 0) = vertices[1];
-  edges(9, 1) = vertices[5];
-
-  edges(10, 0) = vertices[2];
-  edges(10, 1) = vertices[6];
-
-  edges(11, 0) = vertices[3];
-  edges(11, 1) = vertices[7];
-  return edges;
-}
-
-Eigen::MatrixXi TriangleGetEdges(std::vector<int> vertices) {
-  assert(vertices.size() == 3);
-  int numEdges = 3;
-  Eigen::MatrixXi edges(numEdges, 2);
-  edges(0, 0) = vertices[0];
-  edges(0, 1) = vertices[1];
-
-  edges(1, 0) = vertices[1];
-  edges(1, 1) = vertices[2];
-
-  edges(2, 0) = vertices[2];
-  edges(2, 1) = vertices[0];
-  return edges;
-}
-
-Eigen::MatrixXi QuadGetEdges(std::vector<int> vertices) {
-  assert(vertices.size() == 4);
-  int numEdges = 4;
-  Eigen::MatrixXi edges(numEdges, 2);
-  edges(0, 0) = vertices[0];
-  edges(0, 1) = vertices[1];
-
-  edges(1, 0) = vertices[1];
-  edges(1, 1) = vertices[2];
-
-  edges(2, 0) = vertices[2];
-  edges(2, 1) = vertices[3];
-
-  edges(3, 0) = vertices[3];
-  edges(3, 1) = vertices[0];
-  return edges;
-}
-
 using namespace NuTo;
 
 struct Edge {
@@ -94,8 +19,8 @@ struct Face {
   eShape mShape;
 };
 
-struct Element {
-  Element(std::vector<int> nodes, const Shape &s)
+struct Volume {
+  Volume(std::vector<int> nodes, const Shape &s)
       : mNodes(nodes), mShape(s.Enum()) {}
 
   std::vector<int> mNodes;
@@ -124,26 +49,11 @@ public:
         int ndId = mNodes.at(&nd);
         elmNodes.push_back(ndId);
       }
-      auto topoElement = Element(elmNodes, elm.GetShape());
+      auto topoElement = Volume(elmNodes, elm.GetShape());
       mElements.push_back(topoElement);
       // Edges
       Eigen::MatrixXi elementEdges;
-      switch (elm.GetShape().Enum()) {
-      case eShape::Triangle: {
-        elementEdges = TriangleGetEdges(elmNodes);
-        break;
-      }
-      case eShape::Quadrilateral: {
-        elementEdges = QuadGetEdges(elmNodes);
-        break;
-      }
-      case eShape::Hexahedron: {
-        elementEdges = HexGetEdges(elmNodes);
-        break;
-      }
-      default:
-        throw Exception(__PRETTY_FUNCTION__, "Shape edges not implemented");
-      }
+      elementEdges = HexGetEdges(elmNodes);
       for (int j = 0; j < elementEdges.rows(); j++) {
         int startNode = elementEdges(j, 0);
         int endNode = elementEdges(j, 1);
@@ -160,7 +70,7 @@ public:
     }
   }
 
-  std::vector<Element> mElements;
+  std::vector<Volume> mElements;
   std::vector<Edge> mEdges;
 
 private:
@@ -171,9 +81,6 @@ private:
 
 int main(int argc, char *argv[]) {
 
-  std::cout << "Generate a mesh." << std::endl;
-
-  // MeshFem mesh = UnitMeshFem::CreateQuads(5, 7);
   MeshFem mesh = UnitMeshFem::CreateBricks(2, 3, 4);
 
   std::cout << "Generate mesh topology." << std::endl;

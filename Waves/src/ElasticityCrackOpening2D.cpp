@@ -20,6 +20,8 @@
 #include "nuto/mechanics/constraints/ConstraintCompanion.h"
 #include "nuto/mechanics/constraints/Constraints.h"
 
+#include "nuto/base/Timer.h"
+
 #include "../../MyTimeIntegration/NY4NoVelocity.h"
 #include "../../NuToHelpers/ConstraintsHelper.h"
 #include "../../NuToHelpers/MeshValuesTools.h"
@@ -50,11 +52,11 @@ int main(int argc, char *argv[]) {
 
   MeshGmsh gmsh("Crack2D_2.msh");
   MeshFem &mesh = gmsh.GetMeshFEM();
-  auto top = gmsh.GetPhysicalGroup("Top");
   auto bottom = gmsh.GetPhysicalGroup("Bottom");
   auto left = gmsh.GetPhysicalGroup("Left");
   auto crack = gmsh.GetPhysicalGroup("Crack");
   auto domain = gmsh.GetPhysicalGroup("Domain");
+  auto boundary = Unite(Unite(left, bottom), crack);
 
   // **************************************
   // Result directory, filesystem
@@ -98,7 +100,7 @@ int main(int argc, char *argv[]) {
     outputCoords(i, 1) = outRadius * sin(phi);
   }
 
-  Tools::Interpolator myInterpolator(outputCoords, top);
+  Tools::Interpolator myInterpolator(outputCoords, domain);
 
   // ***********************************
   //    Dofs, Interpolation
@@ -106,7 +108,7 @@ int main(int argc, char *argv[]) {
 
   double tau = 0.2e-6;
   double stepSize = 0.006e-6;
-  int numSteps = 2;
+  int numSteps = 100;
 
   double E = 200.0e9;
   double nu = 0.3;
@@ -120,8 +122,12 @@ int main(int argc, char *argv[]) {
   Integrands::DynamicMomentumBalance<2> pde(dof1, steel, rho);
 
   int order = 3;
-  auto &ipol = mesh.CreateInterpolation(InterpolationQuadLobatto(order));
-  AddDofInterpolation(&mesh, dof1, ipol);
+  auto &ipol2D = mesh.CreateInterpolation(InterpolationQuadLobatto(order));
+  AddDofInterpolation(&mesh, dof1, domain, ipol2D);
+
+  auto &ipol1D = mesh.CreateInterpolation(InterpolationTrussLobatto(order));
+  AddDofInterpolation(&mesh, dof1, boundary, ipol1D);
+
   mesh.AllocateDofInstances(dof1, 2);
 
   // ***********************************
@@ -258,9 +264,12 @@ int main(int argc, char *argv[]) {
     Eigen::VectorXd loadVectorMod =
         cmat.transpose() * (boundaryLoad[dof1] - stiffnessMx(dof1, dof1) * B);
 
-    Eigen::VectorXd tmp = (-stiffnessMxMod * w + loadVectorMod);
-    d2wdt2 = (tmp.array() / massMxMod.array()).matrix();
+    d2wdt2 = (-stiffnessMxMod * w + loadVectorMod);
+    d2wdt2 = d2wdt2.cwiseQuotient(massMxMod);
   };
+
+  std::cout << "NumDofs: " << numDofs << std::endl;
+  Timer timer("Solve");
 
   int plotcounter = 1;
   for (int i = 0; i < numSteps; i++) {
@@ -270,15 +279,16 @@ int main(int argc, char *argv[]) {
         cmat * state.first +
         constraints.GetSparseGlobalRhs(dof1, numDofs, (i + 1) * stepSize);
     // output test
-    for (int i = 0; i < outputCoords.rows(); i++) {
-      std::cout << myInterpolator.GetValue(i, dof1) << std::endl;
-    }
+    //    for (int i = 0; i < outputCoords.rows(); i++) {
+    //      std::cout << myInterpolator.GetValue(i, dof1) << std::endl;
+    //    }
     std::cout << i + 1 << std::endl;
-    if ((i * 100) % numSteps == 0) {
-      MergeResult(femResult);
-      visualizeResult(resultDirectoryFull.string() + "Crack2DNormalLoad_" +
-                      std::to_string(plotcounter));
-      plotcounter++;
-    }
+    //    if ((i * 100) % numSteps == 0) {
+    //      MergeResult(femResult);
+    //      visualizeResult(resultDirectoryFull.string() + "Crack2DNormalLoad_"
+    //      +
+    //                      std::to_string(plotcounter));
+    //      plotcounter++;
+    //    }
   }
 }

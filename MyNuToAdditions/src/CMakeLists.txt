@@ -39,6 +39,7 @@ foreach(myFile
     MeshTopology
     ParallelAssembly
     Coordinates
+    ExtendedMeshTest
    )
 ADD_EXECUTABLE(${myFile} ${myFile}.cpp)
 add_dependencies(${myFile} nuto)

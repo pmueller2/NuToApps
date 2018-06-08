@@ -21,6 +21,8 @@
 #include "nuto/mechanics/constraints/ConstraintCompanion.h"
 #include "nuto/mechanics/constraints/Constraints.h"
 
+#include "nuto/base/Timer.h"
+
 #include "../../MyTimeIntegration/NY4NoVelocity.h"
 #include "../../NuToHelpers/ConstraintsHelper.h"
 #include "../../NuToHelpers/MeshValuesTools.h"
@@ -48,13 +50,19 @@ int main(int argc, char *argv[]) {
   //      Geometry parameter
   // *********************************
 
-  MeshGmsh gmsh("plateH0.75_angle45_L0.4.msh");
+  Timer timer("Load Mesh");
+
+  MeshGmsh gmsh("plateH0.3_angle45_L0.4small.msh");
+
   MeshFem &mesh = gmsh.GetMeshFEM();
   auto top = gmsh.GetPhysicalGroup("Top");
   auto domain = gmsh.GetPhysicalGroup("Domain");
   auto backCrackFace = gmsh.GetPhysicalGroup("BackCrackFace");
   auto frontCrackFace = gmsh.GetPhysicalGroup("FrontCrackFace");
   auto crackBoundary = Unite(frontCrackFace, backCrackFace);
+
+  timer.Reset("Output directory stuff");
+  std::cout << std::flush;
 
   // **************************************
   // Result directory, filesystem
@@ -85,6 +93,9 @@ int main(int argc, char *argv[]) {
   // **************************************
   // OutputNodes/OutputData
   // **************************************
+
+  timer.Reset("My Interpolator");
+  std::cout << std::flush;
 
   double centerX = 5.;
   double centerZ = 5.;
@@ -125,13 +136,16 @@ int main(int argc, char *argv[]) {
 
   Tools::Interpolator myInterpolator(outputCoords, top);
 
+  timer.Reset("Interpolation");
+  std::cout << std::flush;
+
   // ***********************************
   //    Dofs, Interpolation
   // ***********************************
 
   double tau = 1.0e-6;
   double stepSize = 0.006e-6;
-  int numSteps = 50000;
+  int numSteps = 2;
 
   double E = 200.0e9;
   double nu = 0.3;
@@ -168,9 +182,16 @@ int main(int argc, char *argv[]) {
   int integrationOrder = order + 1;
 
   // Domain cells
+  timer.Reset("Create integration type");
+  std::cout << std::flush;
+
   auto domainIntType = CreateLobattoIntegrationType(
       domain.begin()->DofElement(dof1).GetShape(), integrationOrder);
   CellStorage domainCells;
+
+  timer.Reset("Create cell group");
+  std::cout << std::flush;
+
   auto domainCellGroup = domainCells.AddCells(domain, *domainIntType);
 
   // Boundary cells
@@ -206,6 +227,8 @@ int main(int argc, char *argv[]) {
       domainCellGroup, {dof1},
       [&](const CellIpData &cipd) { return pde.Hessian2(cipd); });
 
+  timer.Reset("Mass assembly");
+  std::cout << std::flush;
   Eigen::VectorXd massMxMod = lumpedMassMx[dof1];
 
   // ***********************************
@@ -217,7 +240,12 @@ int main(int argc, char *argv[]) {
         return pde.Hessian0(cipd, 0.);
       });
 
-  Eigen::SparseMatrix<double> stiffnessMxMod = stiffnessMx(dof1, dof1);
+  timer.Reset("Stiffness assembly");
+  std::cout << std::flush;
+
+  // Eigen::SparseMatrix<double> stiffnessMxMod = stiffnessMx(dof1, dof1);
+  Eigen::SparseMatrix<double, Eigen::RowMajor> stiffnessMxMod =
+      stiffnessMx(dof1, dof1);
 
   // *********************************
   //      Visualize
@@ -253,7 +281,7 @@ int main(int argc, char *argv[]) {
   w0.setZero();
   v0.setZero();
 
-  auto MergeResult = [&mesh, &dof1](Eigen::VectorXd femResult) {
+  auto MergeResult = [&mesh, &dof1](Eigen::VectorXd &femResult) {
     for (auto &node : mesh.NodesTotal(dof1)) {
       for (int component = 0; component < dof1.GetNum(); component++) {
         int dofNr = node.GetDofNumber(component);
@@ -287,9 +315,10 @@ int main(int argc, char *argv[]) {
 
   auto eq = [&](const Eigen::VectorXd &w, Eigen::VectorXd &d2wdt2, double t) {
 
-    Eigen::VectorXd tmp =
+    Timer timer("compute rhs");
+    d2wdt2 =
         (-stiffnessMxMod * w + loadVectorMod * smearedStepFunction(t, tau));
-    d2wdt2 = (tmp.array() / massMxMod.array()).matrix();
+    d2wdt2.cwiseQuotient(massMxMod);
   };
 
   // ***********************
@@ -304,31 +333,35 @@ int main(int argc, char *argv[]) {
 
   std::ofstream outfile;
 
+  timer.Reset("Solve");
+  std::cout << std::flush;
+
   int plotcounter = 1;
   for (int i = 0; i < numSteps; i++) {
     t = i * stepSize;
     state = ti.DoStep(eq, state.first, state.second, t, stepSize);
-    MergeResult(state.first);
+    // MergeResult(state.first);
     std::cout << i + 1 << std::endl;
+
     // output to data file
-    outfile.open(resultDirectoryFull.string() + "topDisplacements.txt",
-                 std::ios::app);
-    int count = 0;
-    for (double r : outRadius) {
-      for (double phi : outAngles) {
-        Eigen::VectorXd displ = myInterpolator.GetValue(count, dof1);
-        outfile << displ[1] << "\t";
-        count++;
-      }
-    }
-    outfile << std::endl;
-    outfile.close();
+    //    outfile.open(resultDirectoryFull.string() + "topDisplacements.txt",
+    //                 std::ios::app);
+    //    int count = 0;
+    //    for (double r : outRadius) {
+    //      for (double phi : outAngles) {
+    //        Eigen::VectorXd displ = myInterpolator.GetValue(count, dof1);
+    //        outfile << displ[1] << "\t";
+    //        count++;
+    //      }
+    //    }
+    //    outfile << std::endl;
+    //    outfile.close();
     // plot
-    if ((i * 100) % numSteps == 0) {
-      visualizeResult(resultDirectoryFull.string() +
-                      "Crack3D_angle45_h0.75_NormalLoad2ndOrderSlow_" +
-                      std::to_string(plotcounter));
-      plotcounter++;
-    }
+    //    if ((i * 100) % numSteps == 0) {
+    //      visualizeResult(resultDirectoryFull.string() +
+    //                      "Crack3D_angle45_h2_smallNormalLoad2ndOrderSlow_" +
+    //                      std::to_string(plotcounter));
+    //      plotcounter++;
+    //    }
   }
 }

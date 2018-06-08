@@ -1,6 +1,8 @@
 #include "../../MyTimeIntegration/RK4.h"
 #include "../../NuToHelpers/BoostOdeintEigenSupport.h"
 #include "../../NuToHelpers/ConstraintsHelper.h"
+#include "../../NuToHelpers/NiceLookingFunctions.h"
+#include "nuto/base/Timer.h"
 #include "nuto/mechanics/cell/CellIpData.h"
 #include "nuto/mechanics/cell/SimpleAssembler.h"
 #include "nuto/mechanics/constraints/Constraints.h"
@@ -38,8 +40,13 @@ public:
     std::string resultDirectory = "/Wave1D/";
     bool overwriteResultDirectory = true;
 
+    // delete result directory if it exists and create it new
     boost::filesystem::path rootPath = boost::filesystem::initial_path();
-    mResultDirectoryFull = rootPath.append(resultDirectory);
+    mResultDirectoryFull = rootPath.parent_path()
+                               .parent_path()
+                               .append("/results")
+                               .append(resultDirectory);
+
     if (boost::filesystem::exists(
             mResultDirectoryFull)) // does p actually exist?
     {
@@ -101,11 +108,20 @@ public:
           return massLocal;
         })[mDof];
 
-    // Compute inverse modified mass matrix
-    // (this will not work for arbitrary cmat since then the modified mass is in
-    // general not diagonal)
     Eigen::VectorXd modMass =
         (cmat.transpose() * lumpedMassMx.asDiagonal() * cmat).eval().diagonal();
+
+    // Compute stiffness matrix
+    Eigen::SparseMatrix<double> stiffness =
+        asmbl.BuildMatrix(mCellGroup, {mDof}, [&](const CellIpData &cipd) {
+          Eigen::MatrixXd B = cipd.B(mDof, Nabla::Gradient());
+          DofMatrix<double> stiffnessLocal;
+          stiffnessLocal(mDof, mDof) = B.transpose() * B;
+          return stiffnessLocal;
+        })(mDof, mDof);
+
+    Eigen::SparseMatrix<double> modStiffness =
+        (cmat.transpose() * stiffness * cmat).eval();
 
     // Define gradient function
     auto rightHandSide = [&](const CellIpData &cipd) {
@@ -140,6 +156,31 @@ public:
       dwdt.tail(numDofsJ) = rhsFull.cwiseQuotient(modMass);
     };
 
+    Eigen::VectorXd fmod = -cmat.transpose() * stiffness *
+                           mConstraints.GetSparseGlobalRhs(mDof, numDofs, 0.15);
+
+    auto ODESystem1stOrderMatrixVector = [&](const Eigen::VectorXd &w,
+                                             Eigen::VectorXd &dwdt, double t) {
+      // unpack independent velocities and values
+      Eigen::VectorXd valsJ = w.head(numDofsJ);
+      Eigen::VectorXd veloJ = w.tail(numDofsJ);
+      // Update constrained dofs, get all velocities and values
+      auto B = mConstraints.GetSparseGlobalRhs(mDof, numDofs, t);
+      Eigen::VectorXd vals = cmat * valsJ + B;
+      // Below is actually a dot(B) type thing missing
+      Eigen::VectorXd velo = cmat * veloJ;
+      // Node Merge
+      for (NodeSimple &nd : mDofNodes) {
+        int dofNr = nd.GetDofNumber(0);
+        nd.SetValue(0, vals[dofNr], 0);
+        nd.SetValue(0, velo[dofNr], 1);
+      }
+      Eigen::VectorXd rhsFull =
+          -modStiffness * valsJ + fmod * smearedStepFunction(t, 0.3);
+      dwdt.head(numDofsJ) = veloJ;
+      dwdt.tail(numDofsJ) = rhsFull.cwiseQuotient(modMass);
+    };
+
     Eigen::VectorXd state(2 * numDofsJ);
     // Extract values
     for (NodeSimple &nd : mDofNodes) {
@@ -153,13 +194,18 @@ public:
       }
     }
 
-    TimeIntegration::RK4<Eigen::VectorXd> ti;
+    // TimeIntegration::RK4<Eigen::VectorXd> ti;
+    boost::numeric::odeint::runge_kutta4<
+        Eigen::VectorXd, double, Eigen::VectorXd, double,
+        boost::numeric::odeint::vector_space_algebra>
+        ti;
 
     double t = 0.;
     int plotcounter = 1;
     for (int i = 0; i < numSteps; i++) {
       t = i * stepSize;
       ti.do_step(ODESystem1stOrder, state, t, stepSize);
+      // ti.do_step(ODESystem1stOrderMatrixVector, state, t, stepSize);
 
       std::cout << i + 1 << std::endl;
       if ((i * 100) % numSteps == 0) {
@@ -195,44 +241,11 @@ private:
 
 int main(int argc, char *argv[]) {
 
-  // ***************************
-  // Some nice looking functions
-  // ***************************
-
-  auto cosineBump = [](double x) {
-    double a = 0.3;
-    double b = 0.7;
-    if ((a < x) && (x < b)) {
-      return 0.5 * (1. - cos(2 * M_PI * (x - a) / (b - a)));
-    }
-    return 0.;
-  };
-
-  auto cosineBumpDerivative = [](double x) {
-    double a = 0.3;
-    double b = 0.7;
-    if ((a < x) && (x < b)) {
-      return M_PI / (b - a) * sin(2 * M_PI * (x - a) / (b - a));
-    }
-    return 0.;
-  };
-
-  auto smearedStepFunction = [](double t, double tau) {
-    if ((0 < t) && (t < tau)) {
-      return 0.5 * (1. - cos(2 * M_PI * t / tau));
-    }
-    return 0.;
-  };
-
-  // ****************************
-  // Solving the 1D wave equation
-  // ****************************
-
-  int numElms = 100;
+  int numElms = 10000;
   int interpolationOrder = 3;
 
-  int numSteps = 1000;
-  double stepSize = 0.001;
+  int numSteps = 10;
+  double stepSize = 0.00001;
   double tau = 0.3;
 
   Wave1D example1(numElms, interpolationOrder);
@@ -241,5 +254,6 @@ int main(int argc, char *argv[]) {
   example1.SetDirichletBoundaryLeft([](double t) { return 0.; });
   example1.SetDirichletBoundaryRight(
       [&](double t) { return smearedStepFunction(t, tau); });
+  NuTo::Timer timer("Solve");
   example1.Solve(numSteps, stepSize);
 }

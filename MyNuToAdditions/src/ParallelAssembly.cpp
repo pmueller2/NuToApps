@@ -20,12 +20,12 @@ BOOST_AUTO_TEST_CASE(OmpParallelVectorAssembly) {
   int order = 4;
   MeshFem mesh;
   {
-    Timer timer("UnitMeshFem::CreateLines");
+    //    Timer timer("UnitMeshFem::CreateLines");
     mesh = UnitMeshFem::CreateLines(n);
   }
   DofType dof("Displacement", 1);
   {
-    Timer timer("AddDofInterpolation");
+    //    Timer timer("AddDofInterpolation");
     AddDofInterpolation(
         &mesh, dof, mesh.CreateInterpolation(InterpolationTrussLobatto(order)));
   }
@@ -34,12 +34,12 @@ BOOST_AUTO_TEST_CASE(OmpParallelVectorAssembly) {
                                                   eIntegrationMethod::LOBATTO);
   Group<ElementCollectionFem> domain;
   {
-    Timer timer("ElementsTotal");
+    //    Timer timer("ElementsTotal");
     domain = mesh.ElementsTotal();
   }
   Group<NodeSimple> dofNodes;
   {
-    Timer timer("NodesTotal");
+    //    Timer timer("NodesTotal");
     dofNodes = mesh.NodesTotal(dof);
   }
   CellStorage cells;
@@ -116,10 +116,16 @@ BOOST_AUTO_TEST_CASE(OmpParallelMatrixAssembly) {
   CellStorage cells;
   Group<CellInterface> cellGroup = cells.AddCells(domain, integrationType);
 
+  //  auto stiffness = [dof](const CellIpData &cipd) {
+  //    Eigen::MatrixXd B = cipd.B(dof, Nabla::Gradient());
+  //    DofMatrix<double> stiffnessLocal;
+  //    stiffnessLocal(dof, dof) = B.transpose() * 1 * B;
+  //    return stiffnessLocal;
+  //  };
+
   auto stiffness = [dof](const CellIpData &cipd) {
-    Eigen::MatrixXd B = cipd.B(dof, Nabla::Gradient());
     DofMatrix<double> stiffnessLocal;
-    stiffnessLocal(dof, dof) = B.transpose() * 1 * B;
+    stiffnessLocal(dof, dof) = Eigen::Matrix<double, 5, 5>::Ones();
     return stiffnessLocal;
   };
 
@@ -169,6 +175,107 @@ BOOST_AUTO_TEST_CASE(OmpParallelMatrixAssembly) {
   // ******************************************
 
   timer.Reset("Matrix Assembly single core");
+
+  Eigen::SparseMatrix<double> hessianSingleCore(numDofs, numDofs);
+  std::list<Eigen::Triplet<double>> tripletsSingleCore;
+
+  for (auto it = cellGroup.begin(); it < cellGroup.end(); it++) {
+    const Eigen::MatrixXd cellHessian = it->Integrate(stiffness)(dof, dof);
+    Eigen::VectorXi numberingDof = it->DofNumbering(dof);
+    for (int i = 0; i < numberingDof.rows(); ++i) {
+      for (int j = 0; j < numberingDof.rows(); ++j) {
+        const int globalDofNumberI = numberingDof[i];
+        const int globalDofNumberJ = numberingDof[j];
+        const double globalDofValue = cellHessian(i, j);
+        tripletsSingleCore.push_back(
+            {globalDofNumberI, globalDofNumberJ, globalDofValue});
+      }
+    }
+  }
+  hessianSingleCore.setFromTriplets(tripletsSingleCore.begin(),
+                                    tripletsSingleCore.end());
+
+  timer.Reset("Matrix comparison");
+  double diffNorm = (hessian - hessianSingleCore).norm();
+
+  BOOST_CHECK_SMALL(diffNorm, 1e-6);
+}
+
+BOOST_AUTO_TEST_CASE(OmpParallelMatrixAssemblyStdVector) {
+  int n = 1e4;
+  int order = 4;
+  MeshFem mesh = UnitMeshFem::CreateLines(n);
+  DofType dof("Displacement", 1);
+  AddDofInterpolation(
+      &mesh, dof, mesh.CreateInterpolation(InterpolationTrussLobatto(order)));
+  IntegrationTypeTensorProduct<1> integrationType(order + 1,
+                                                  eIntegrationMethod::LOBATTO);
+  Group<ElementCollectionFem> domain = mesh.ElementsTotal();
+  Group<NodeSimple> dofNodes = mesh.NodesTotal(dof);
+  CellStorage cells;
+  Group<CellInterface> cellGroup = cells.AddCells(domain, integrationType);
+
+  //  auto stiffness = [dof](const CellIpData &cipd) {
+  //    Eigen::MatrixXd B = cipd.B(dof, Nabla::Gradient());
+  //    DofMatrix<double> stiffnessLocal;
+  //    stiffnessLocal(dof, dof) = B.transpose() * 1 * B;
+  //    return stiffnessLocal;
+  //  };
+
+  auto stiffness = [dof](const CellIpData &cipd) {
+    DofMatrix<double> stiffnessLocal;
+    stiffnessLocal(dof, dof) = Eigen::Matrix<double, 5, 5>::Ones();
+    return stiffnessLocal;
+  };
+
+  // ******************************************
+  // Assembly
+  // ******************************************
+
+  Constraint::Constraints constraints;
+  DofInfo dofInfo = DofNumbering::Build(dofNodes, dof, constraints);
+  int numDofs = dofInfo.numDependentDofs[dof] + dofInfo.numIndependentDofs[dof];
+
+  Timer timer("Matrix Assembly parallel StdVector");
+
+  int numThreads = 4;
+
+  Eigen::SparseMatrix<double> hessian(numDofs, numDofs);
+  std::vector<Eigen::Triplet<double>> triplets;
+  triplets.reserve(numDofs);
+
+#pragma omp parallel num_threads(numThreads) default(shared) firstprivate(dof)
+  {
+    std::vector<Eigen::Triplet<double>> localtriplets;
+    localtriplets.reserve(numDofs);
+#pragma omp for nowait
+    for (auto it = cellGroup.begin(); it < cellGroup.end(); it++) {
+      const Eigen::MatrixXd cellHessian = it->Integrate(stiffness)(dof, dof);
+      Eigen::VectorXi numberingDof = it->DofNumbering(dof);
+      for (int i = 0; i < numberingDof.rows(); ++i) {
+        for (int j = 0; j < numberingDof.rows(); ++j) {
+          const int globalDofNumberI = numberingDof[i];
+          const int globalDofNumberJ = numberingDof[j];
+          const double globalDofValue = cellHessian(i, j);
+          localtriplets.push_back(
+              {globalDofNumberI, globalDofNumberJ, globalDofValue});
+        }
+      }
+    }
+#pragma omp critical
+    triplets.insert(triplets.end(), localtriplets.begin(), localtriplets.end());
+  }
+
+  {
+    timer.Reset("    SetFromTriplets");
+
+    hessian.setFromTriplets(triplets.begin(), triplets.end());
+  }
+  // ******************************************
+  // Check Assembly by not using omp
+  // ******************************************
+
+  timer.Reset("Matrix Assembly single core StdVector");
 
   Eigen::SparseMatrix<double> hessianSingleCore(numDofs, numDofs);
   std::list<Eigen::Triplet<double>> tripletsSingleCore;

@@ -23,9 +23,13 @@ foreach(inputFile
         Crack2D_1.msh
         Crack2D_2.msh
         plateH2_angle45_L0.4.msh
+        plateH2_angle45_L0.4small.msh
         plateH1_angle45_L0.4.msh
+        plateH0.3_angle45_L0.4small.msh
         plateH0.5_angle45_L0.4.msh
         plateH0.75_angle45_L0.4.msh
+        plateH2_angle45_L0.4smallLinear.msh
+        cube20x20x20.msh
     )
     execute_process(COMMAND "${CMAKE_COMMAND}" "-E" "create_symlink"
         "${CMAKE_CURRENT_SOURCE_DIR}/${inputFile}"
@@ -41,6 +45,7 @@ foreach(myFile
     ElasticityCrackOpening3D
     Wave1D
     mytest
+    GenerateReferenceMatrices
    )
 ADD_EXECUTABLE(${myFile} ${myFile}.cpp)
 add_dependencies(${myFile} nuto)
