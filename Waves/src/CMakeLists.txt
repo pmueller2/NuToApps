@@ -37,15 +37,17 @@ foreach(inputFile
 
 endforeach()
 
-include_directories("${CMAKE_CURRENT_BINARY_DIR}/include")
+include_directories(Before "${CMAKE_CURRENT_BINARY_DIR}/include")
 link_directories("${CMAKE_CURRENT_BINARY_DIR}/lib")
 
 foreach(myFile
     ElasticityCrackOpening2D
     ElasticityCrackOpening3D
+    PointForce3D
     Wave1D
     mytest
     GenerateReferenceMatrices
+    AssemblyBenchmark
    )
 ADD_EXECUTABLE(${myFile} ${myFile}.cpp)
 add_dependencies(${myFile} nuto)
