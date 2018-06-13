@@ -40,7 +40,7 @@ foreach(myFile
     ParallelAssembly
     Coordinates
     ExtendedMeshTest
-   )
+    Plot)
 ADD_EXECUTABLE(${myFile} ${myFile}.cpp)
 add_dependencies(${myFile} nuto)
 TARGET_LINK_LIBRARIES(${myFile} NuTo ${Boost_LIBRARIES} ${LAPACK_LIBRARIES} ${ARPACK_LIBRARY})
