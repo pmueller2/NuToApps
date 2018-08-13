@@ -23,7 +23,6 @@
 
 #include "nuto/base/Timer.h"
 
-#include "../../MyTimeIntegration/NY4NoVelocity.h"
 #include "../../NuToHelpers/ConstraintsHelper.h"
 #include "../../NuToHelpers/MeshValuesTools.h"
 
@@ -45,6 +44,7 @@ double smearedStepFunction(double t, double tau) {
  * Circular crack opening.
  */
 int main(int argc, char *argv[]) {
+  std::cout << "large mesh" << std::endl;
 
   // *********************************
   //      Geometry parameter
@@ -52,7 +52,7 @@ int main(int argc, char *argv[]) {
 
   Timer timer("Load Mesh");
 
-  MeshGmsh gmsh("plateH0.3_angle45_L0.4small.msh");
+  MeshGmsh gmsh("plateH0.1_angle45_L0.4small.msh");
 
   MeshFem &mesh = gmsh.GetMeshFEM();
   auto top = gmsh.GetPhysicalGroup("Top");
@@ -145,7 +145,8 @@ int main(int argc, char *argv[]) {
 
   double tau = 1.0e-6;
   double stepSize = 0.006e-6;
-  int numSteps = 2;
+  int numSteps = 10000;
+  int plotSteps = 100;
 
   double E = 200.0e9;
   double nu = 0.3;
@@ -166,7 +167,7 @@ int main(int argc, char *argv[]) {
   Laws::LinearElastic<3> steel(E, nu);
   Integrands::DynamicMomentumBalance<3> pde(dof1, steel, rho);
 
-  int order = 2;
+  int order = 1;
 
   auto &ipol3D = mesh.CreateInterpolation(InterpolationBrickLobatto(order));
   AddDofInterpolation(&mesh, dof1, domain, ipol3D);
@@ -221,31 +222,32 @@ int main(int argc, char *argv[]) {
   int numDofs =
       dofInfo.numIndependentDofs[dof1] + dofInfo.numDependentDofs[dof1];
 
+  // ***********************
+  // General infos
+  // ***********************
+
+  std::cout << "NumDofs: " << numDofs << std::endl;
+
   SimpleAssembler asmbl = SimpleAssembler(dofInfo);
 
-  auto lumpedMassMx = asmbl.BuildDiagonallyLumpedMatrix(
+  Eigen::VectorXd massMxMod = asmbl.BuildDiagonallyLumpedMatrix(
       domainCellGroup, {dof1},
-      [&](const CellIpData &cipd) { return pde.Hessian2(cipd); });
+      [&](const CellIpData &cipd) { return pde.Hessian2(cipd); })[dof1];
 
   timer.Reset("Mass assembly");
   std::cout << std::flush;
-  Eigen::VectorXd massMxMod = lumpedMassMx[dof1];
 
   // ***********************************
   //    Assemble stiffness matrix
   // ***********************************
 
-  DofMatrixSparse<double> stiffnessMx =
+  Eigen::SparseMatrix<double, Eigen::RowMajor> stiffnessMxMod =
       asmbl.BuildMatrix(domainCellGroup, {dof1}, [&](const CellIpData &cipd) {
         return pde.Hessian0(cipd, 0.);
-      });
+      })(dof1, dof1);
 
   timer.Reset("Stiffness assembly");
   std::cout << std::flush;
-
-  // Eigen::SparseMatrix<double> stiffnessMxMod = stiffnessMx(dof1, dof1);
-  Eigen::SparseMatrix<double, Eigen::RowMajor> stiffnessMxMod =
-      stiffnessMx(dof1, dof1);
 
   // *********************************
   //      Visualize
@@ -271,7 +273,6 @@ int main(int argc, char *argv[]) {
   //    Solve
   // ***********************************
 
-  NuTo::TimeIntegration::NY4NoVelocity<Eigen::VectorXd> ti;
   double t = 0.;
 
   // Set initial data
@@ -289,8 +290,6 @@ int main(int argc, char *argv[]) {
       }
     };
   };
-
-  auto state = std::make_pair(w0, v0);
 
   auto crackLoadFunc = [&](const CellIpData &cipd, double tt) {
     Eigen::MatrixXd N = cipd.N(dof1);
@@ -313,55 +312,68 @@ int main(int argc, char *argv[]) {
   Eigen::VectorXd loadVectorMod =
       boundaryLoadFront[dof1] - boundaryLoadBack[dof1];
 
-  auto eq = [&](const Eigen::VectorXd &w, Eigen::VectorXd &d2wdt2, double t) {
-
-    Timer timer("compute rhs");
-    d2wdt2 =
-        (-stiffnessMxMod * w + loadVectorMod * smearedStepFunction(t, tau));
-    d2wdt2.cwiseQuotient(massMxMod);
-  };
-
-  // ***********************
-  // General infos
-  // ***********************
-
-  std::cout << "NumDofs: " << numDofs << std::endl;
-
   // ***********************
   // Solve
   // ***********************
 
-  std::ofstream outfile;
-
   timer.Reset("Solve");
   std::cout << std::flush;
+
+  const Eigen::Matrix4d a = (Eigen::Matrix4d() << 0., 0., 0., 0., //
+                             0.5, 0., 0., 0.,                     //
+                             0.5, 0.5, 0., 0.,                    //
+                             0.0, 0.0, 1., 0.                     //
+                             ).finished();
+
+  const Eigen::Vector4d b =
+      (Eigen::Vector4d() << 1. / 6., 1. / 3., 1. / 3., 1. / 6.).finished();
+
+  const Eigen::Vector4d c = (Eigen::Vector4d() << 0., 0.5, 0.5, 1.).finished();
+
+  Eigen::VectorXd wOld(2 * dofInfo.numIndependentDofs[dof1]);
+  wOld << w0, v0;
+  Eigen::VectorXd wNew(2 * dofInfo.numIndependentDofs[dof1]);
+  Eigen::VectorXd wni(2 * dofInfo.numIndependentDofs[dof1]);
+  std::vector<Eigen::VectorXd> k(c.size());
+  k[0].resize(2 * dofInfo.numIndependentDofs[dof1]);
+  k[1].resize(2 * dofInfo.numIndependentDofs[dof1]);
+  k[2].resize(2 * dofInfo.numIndependentDofs[dof1]);
+  k[3].resize(2 * dofInfo.numIndependentDofs[dof1]);
+
+  Eigen::VectorXd femResult(dofInfo.numIndependentDofs[dof1]);
 
   int plotcounter = 1;
   for (int i = 0; i < numSteps; i++) {
     t = i * stepSize;
-    state = ti.DoStep(eq, state.first, state.second, t, stepSize);
-    // MergeResult(state.first);
+    wNew = wOld;
+    for (std::size_t i = 0; i < c.size(); i++) {
+      double tRK = t + c[i] * stepSize;
+      wni = wOld;
+      for (std::size_t j = 0; j < i; j++) {
+        if (a(i, j) != 0)
+          wni += stepSize * a(i, j) * k[j];
+      }
+      // Here the RHS is evaluated
+      Timer tm("RHS");
+      k[i].head(dofInfo.numIndependentDofs[dof1]) =
+          wni.tail(dofInfo.numIndependentDofs[dof1]);
+      k[i].tail(dofInfo.numIndependentDofs[dof1]) =
+          -stiffnessMxMod * wni.head(dofInfo.numIndependentDofs[dof1]) +
+          loadVectorMod * smearedStepFunction(t, tau);
+      k[i].tail(dofInfo.numIndependentDofs[dof1]).cwiseQuotient(massMxMod);
+      wNew += stepSize * b[i] * k[i];
+    }
+    wOld = wNew;
+
     std::cout << i + 1 << std::endl;
 
-    // output to data file
-    //    outfile.open(resultDirectoryFull.string() + "topDisplacements.txt",
-    //                 std::ios::app);
-    //    int count = 0;
-    //    for (double r : outRadius) {
-    //      for (double phi : outAngles) {
-    //        Eigen::VectorXd displ = myInterpolator.GetValue(count, dof1);
-    //        outfile << displ[1] << "\t";
-    //        count++;
-    //      }
-    //    }
-    //    outfile << std::endl;
-    //    outfile.close();
-    // plot
-    //    if ((i * 100) % numSteps == 0) {
-    //      visualizeResult(resultDirectoryFull.string() +
-    //                      "Crack3D_angle45_h2_smallNormalLoad2ndOrderSlow_" +
-    //                      std::to_string(plotcounter));
-    //      plotcounter++;
-    //    }
+    if (i % plotSteps == 0) {
+      femResult = wNew.head(dofInfo.numIndependentDofs[dof1]);
+      MergeResult(femResult);
+      visualizeResult(resultDirectoryFull.string() +
+                      "Crack3D_angle45_h0.1_smallNormalLoad2ndOrderSlow_" +
+                      std::to_string(plotcounter));
+      plotcounter++;
+    }
   }
 }

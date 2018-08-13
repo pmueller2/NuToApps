@@ -37,7 +37,14 @@ public:
     template <typename F>
     std::pair<Tstate, Tstate> DoStep(F f, Tstate w0, Tstate v0, double t0, double h)
     {
-        std::vector<Tstate> k(c.size(), w0);
+        if (k.empty())
+        {
+            k.resize(c.size());
+        }
+        for (int i=0; i<k.size(); i++)
+        {
+            k[i] = w0;
+        }
         Tstate resultW = w0 + h * v0;
         Tstate resultV = v0;
 
@@ -62,6 +69,7 @@ protected:
     std::vector<double> b1;
     std::vector<double> b2;
     std::vector<double> c;
+    std::vector<Tstate> k;
 };
 }
 }

@@ -11,6 +11,7 @@
 
 #include "nuto/base/Timer.h"
 
+#include <functional>
 #include <iostream>
 
 using namespace NuTo;
@@ -20,9 +21,9 @@ using namespace NuTo;
  * a simple wave problem
  */
 int main(int argc, char *argv[]) {
-  int nX = 100;
-  int nY = 100;
-  int nZ = 10;
+  int nX = 3;
+  int nY = 3;
+  int nZ = 3;
   int order = 2;
 
   double E = 200.0e9;
@@ -74,6 +75,10 @@ int main(int argc, char *argv[]) {
   };
 
   Eigen::VectorXd localGradient(ipol.GetNumNodes() * dof.GetNum());
+  localGradient.setOnes();
+
+  DofVector<double> localGradientDof;
+  localGradientDof[dof] = localGradient;
 
   auto constantRHS = [dof, &localGradient](const CellIpData &cipd) {
 
@@ -85,7 +90,79 @@ int main(int argc, char *argv[]) {
   DofVector<double> globalDofVector;
   {
     Timer timer("VectorAssembly");
-    globalDofVector = asmbl.BuildVector(cellGroup, {dof}, constantRHS);
+    globalDofVector = asmbl.BuildVector(cellGroup, {dof}, rightHandSide);
   }
-  std::cout << std::flush;
+
+  // ****************************
+
+  //  {
+  //    Timer timer("ThrowOnZeroDofNumbering");
+
+  //    if (not dofInfo.numIndependentDofs.Has(dof))
+  //      throw Exception(
+  //          "[NuTo::SimpleAssembler]",
+  //          "You did not provide a dof numbering for DofType " + dof.GetName()
+  //          +
+  //              ". Please do so by SimpleAssembler::calling
+  //              SetDofInfo(...).");
+  //  }
+
+  //  DofVector<double> gradient;
+  //  {
+  //    Timer timer("Properly resizedDofVector");
+  //    gradient[dof].setZero(dofInfo.numIndependentDofs[dof] +
+  //                          dofInfo.numDependentDofs[dof]);
+  //  }
+
+  //  {
+  //    Timer timer("MyVectorAssembly");
+
+  //#pragma omp parallel
+  //    {
+  //      DofVector<double> threadlocalgradient = gradient;
+  //#pragma omp for nowait
+  //      for (auto cellit = cellGroup.begin(); cellit < cellGroup.end();
+  //           cellit++) {
+  //        //        const DofVector<double> cellGradient =
+  //        //        cellit->Integrate(rightHandSide);
+  //        // roll out Cell Integrate
+  //        DofVector<double> cellGradient;
+
+  //        CellData cellData(cellit->mElements, cellit->mId);
+  //        for (int iIP = 0;
+  //             iIP < cellit->mIntegrationType.GetNumIntegrationPoints();
+  //             ++iIP) {
+  //          auto ipCoords =
+  //              cellit->mIntegrationType.GetLocalIntegrationPointCoordinates(iIP);
+  //          auto ipWeight =
+  //              cellit->mIntegrationType.GetIntegrationPointWeight(iIP);
+  //          const Jacobian &jacobian = cellit->mJacobianMemo.Get(ipCoords);
+  //          CellIpData cellipData(cellData, jacobian, ipCoords, iIP);
+  //          cellGradient += rightHandSide(cellipData) * jacobian.Det() *
+  //          ipWeight;
+  //        }
+  //        // end Cell Integrate
+  //        std::vector<DofType> intersection;
+  //        for (DofType d1 : cellGradient.DofTypes())
+  //          for (DofType d2 : {dof})
+  //            if (d1.Id() == d2.Id()) {
+  //              intersection.push_back(d1);
+  //              continue;
+  //            }
+
+  //        for (DofType dof : intersection) {
+  //          Eigen::VectorXi numberingDof = cellit->DofNumbering(dof);
+  //          const Eigen::VectorXd &cellGradientDof = cellGradient[dof];
+  //          for (int i = 0; i < numberingDof.rows(); ++i)
+  //            threadlocalgradient[dof](numberingDof[i]) += cellGradientDof[i];
+  //        }
+  //      }
+  //#pragma omp critical
+  //      gradient += threadlocalgradient;
+  //    }
+  //  }
+
+  //  // ****************************
+
+  //  std::cout << std::flush;
 }

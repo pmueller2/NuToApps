@@ -11,7 +11,6 @@ find_package(Boost COMPONENTS unit_test_framework REQUIRED)
 
 find_path(EIGEN_INCLUDE_DIR NAMES Eigen/Core PATH_SUFFIXES eigen3)
 include_directories(${EIGEN_INCLUDE_DIR})
-include_directories("nuto")
 
 include(ExternalProject)
 
@@ -22,7 +21,7 @@ ExternalProject_Add(nuto
     BUILD_ALWAYS 1
     )
 
-include_directories(${PROJECT_SOURCE_DIR}/../../NuTo)
+include_directories(before ${PROJECT_SOURCE_DIR}/../../NuTo)
 link_directories("${CMAKE_CURRENT_BINARY_DIR}/lib")
 
 foreach(inputFile
@@ -36,10 +35,11 @@ foreach(inputFile
 endforeach()
 
 foreach(myFile
-    MeshTopology
+    #MeshTopology
     ParallelAssembly
     Coordinates
     ExtendedMeshTest
+    createCellsBenchmark
     Plot)
 ADD_EXECUTABLE(${myFile} ${myFile}.cpp)
 add_dependencies(${myFile} nuto)

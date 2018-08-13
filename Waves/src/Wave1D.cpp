@@ -1,10 +1,10 @@
 #include "../../MyTimeIntegration/RK4.h"
 #include "../../NuToHelpers/BoostOdeintEigenSupport.h"
-#include "../../NuToHelpers/ConstraintsHelper.h"
 #include "../../NuToHelpers/NiceLookingFunctions.h"
 #include "nuto/base/Timer.h"
 #include "nuto/mechanics/cell/CellIpData.h"
 #include "nuto/mechanics/cell/SimpleAssembler.h"
+#include "nuto/mechanics/constraints/ConstraintCompanion.h"
 #include "nuto/mechanics/constraints/Constraints.h"
 #include "nuto/mechanics/integrationtypes/IntegrationTypeTensorProduct.h"
 #include "nuto/mechanics/interpolation/InterpolationTrussLobatto.h"
@@ -17,6 +17,7 @@
 #include "boost/filesystem.hpp"
 #include "boost/numeric/odeint/stepper/runge_kutta4.hpp"
 
+#include "ScalarWaveEquation.h"
 #include <iostream>
 
 using namespace NuTo;
@@ -94,7 +95,7 @@ public:
     int numDofs = numDofsJ + numDofsK;
     auto cmat = mConstraints.BuildUnitConstraintMatrix(mDof, numDofs);
     Eigen::PermutationMatrix<Eigen::Dynamic> JKtoGlobal(
-        Constraint::GetJKNumbering(mConstraints, mDof, numDofs));
+        mConstraints.GetJKNumbering(mDof, numDofs).mIndices);
     Eigen::PermutationMatrix<Eigen::Dynamic> GlobalToJK = JKtoGlobal.inverse();
 
     SimpleAssembler asmbl = SimpleAssembler(dofInfo);
@@ -241,19 +242,30 @@ private:
 
 int main(int argc, char *argv[]) {
 
-  int numElms = 10000;
-  int interpolationOrder = 3;
+  //  int numElms = 10000;
+  //  int interpolationOrder = 3;
 
-  int numSteps = 10;
-  double stepSize = 0.00001;
-  double tau = 0.3;
+  //  int numSteps = 10;
+  //  double stepSize = 0.00001;
+  //  double tau = 0.3;
 
-  Wave1D example1(numElms, interpolationOrder);
-  // example1.SetValues(cosineBump, 0); // Initial data values
-  // example1.SetValues(cosineBumpDerivative, 1); // Initial data velocities
-  example1.SetDirichletBoundaryLeft([](double t) { return 0.; });
-  example1.SetDirichletBoundaryRight(
-      [&](double t) { return smearedStepFunction(t, tau); });
-  NuTo::Timer timer("Solve");
-  example1.Solve(numSteps, stepSize);
+  //  Wave1D example1(numElms, interpolationOrder);
+  //  // example1.SetValues(cosineBump, 0); // Initial data values
+  //  // example1.SetValues(cosineBumpDerivative, 1); // Initial data velocities
+  //  example1.SetDirichletBoundaryLeft([](double t) { return 0.; });
+  //  example1.SetDirichletBoundaryRight(
+  //      [&](double t) { return smearedStepFunction(t, tau); });
+  //  NuTo::Timer timer("Solve");
+  //  example1.Solve(numSteps, stepSize);
+
+  MeshFem mesh = UnitMeshFem::CreateLines(10);
+  auto domain = mesh.ElementsTotal();
+  auto ndLeft = mesh.NodeAtCoordinate(Eigen::VectorXd::Constant(1, 0.0));
+  auto ndRight = mesh.NodeAtCoordinate(Eigen::VectorXd::Constant(1, 1.0));
+
+  ScalarWaveEquation wave(mesh);
+  wave.SetDomain(domain);
+  wave.SetOrder(2);
+  wave.SetDirichletBoundary({ndLeft, ndRight}, 1.0);
+  wave.SetResultDirectory("ScalarWave");
 }
