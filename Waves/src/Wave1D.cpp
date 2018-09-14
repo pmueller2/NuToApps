@@ -177,7 +177,7 @@ public:
         nd.SetValue(0, velo[dofNr], 1);
       }
       Eigen::VectorXd rhsFull =
-          -modStiffness * valsJ + fmod * smearedStepFunction(t, 0.3);
+          -modStiffness * valsJ + fmod * smearedHatFunction(t, 0.3);
       dwdt.head(numDofsJ) = veloJ;
       dwdt.tail(numDofsJ) = rhsFull.cwiseQuotient(modMass);
     };
@@ -241,22 +241,6 @@ private:
 };
 
 int main(int argc, char *argv[]) {
-
-  //  int numElms = 10000;
-  //  int interpolationOrder = 3;
-
-  //  int numSteps = 10;
-  //  double stepSize = 0.00001;
-  //  double tau = 0.3;
-
-  //  Wave1D example1(numElms, interpolationOrder);
-  //  // example1.SetValues(cosineBump, 0); // Initial data values
-  //  // example1.SetValues(cosineBumpDerivative, 1); // Initial data velocities
-  //  example1.SetDirichletBoundaryLeft([](double t) { return 0.; });
-  //  example1.SetDirichletBoundaryRight(
-  //      [&](double t) { return smearedStepFunction(t, tau); });
-  //  NuTo::Timer timer("Solve");
-  //  example1.Solve(numSteps, stepSize);
 
   MeshFem mesh = UnitMeshFem::CreateLines(10);
   auto domain = mesh.ElementsTotal();

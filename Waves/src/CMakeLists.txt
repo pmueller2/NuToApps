@@ -45,11 +45,18 @@ endforeach()
 
 foreach(myFile
     ElasticityCrackOpening2D
+    ElasticityRectangle
+    ElasticityTiltedCrackOpening2D
     ElasticityCrackOpening3D
     PointForce3D
+    WaveRectangle
+    WaveRectangleWithLoadedEllipticalHole
+    Elasticity2DWithLoadedEllipticalHole
+    Elasticity3DWithLoadedSphereSegementHole
     mytest
     GenerateReferenceMatrices
     AssemblyBenchmark
+    WaveLine
    )
 ADD_EXECUTABLE(${myFile} ${myFile}.cpp)
 add_dependencies(${myFile} nuto)

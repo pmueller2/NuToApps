@@ -42,17 +42,19 @@ public:
   void SetDomain(NuTo::Group<NuTo::ElementCollectionFem> elements);
   void SetBoundary(NuTo::Group<NuTo::ElementCollectionFem> elements);
 
-  //! Set dirichlet boundary (constant in time) at elements
+  //! Set dirichlet boundary (constant in time, space dependent) at elements
   void SetDirichletBoundary(NuTo::Group<NuTo::ElementCollectionFem> elements,
                             std::function<double(Eigen::VectorXd)> func);
 
+  //! Set dirichlet boundary (constant in time and space) at elements
   void SetDirichletBoundary(NuTo::Group<NuTo::ElementCollectionFem> elements,
                             double val);
 
-  //! Set dirichlet boundary (constant in time) at nodes
+  //! Set dirichlet boundary (constant in time, space dependent) at nodes
   void SetDirichletBoundary(NuTo::Group<NuTo::NodeSimple> coordinateNodes,
                             std::function<double(Eigen::VectorXd)> func);
 
+  //! Set dirichlet boundary (constant in time and space) at nodes
   void SetDirichletBoundary(NuTo::Group<NuTo::NodeSimple> coordinateNodes,
                             double val);
 

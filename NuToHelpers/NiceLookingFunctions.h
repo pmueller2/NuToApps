@@ -18,9 +18,19 @@ double cosineBumpDerivative(double x) {
   return 0.;
 }
 
-double smearedStepFunction(double t, double tau) {
+double smearedHatFunction(double t, double tau) {
   if ((0 < t) && (t < tau)) {
     return 0.5 * (1. - cos(2 * M_PI * t / tau));
+  }
+  return 0.;
+}
+
+double smearedStepFunction(double t, double tau) {
+  if ((0 < t) && (t < tau)) {
+    return 0.5 * (1. - cos(M_PI * t / tau));
+  }
+  if (t >= tau) {
+    return 1.;
   }
   return 0.;
 }
